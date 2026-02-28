@@ -345,10 +345,8 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 
 	// Treat leaving the surface as moving to no icon: clear the hover label
 	// on whichever icon was last highlighted and reset the tracking index.
-	// clang-format off
-	if (last_hovered_icon >= 0
-		&& app_config.label_mode == LABEL_MODE_HOVER && buffer) {
-		// clang-format on
+	if (last_hovered_icon >= 0 &&
+		app_config.label_mode == LABEL_MODE_HOVER && buffer) {
 		int icon_size = app_config.icon_size;
 		int idx = last_hovered_icon;
 
@@ -486,10 +484,9 @@ pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 		break;
 	}
 
-	// clang-format off
-	const char *state_name =
-		(state == WL_POINTER_BUTTON_STATE_PRESSED) ? "PRESSED" : "RELEASED";
-	// clang-format on
+	const char *state_name = (state == WL_POINTER_BUTTON_STATE_PRESSED) ?
+		"PRESSED" :
+		"RELEASED";
 
 	// Calculate which icon was clicked based on current pointer position
 	int icon_index = -1;
@@ -508,11 +505,9 @@ pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 			app_config.apps[icon_index]->name);
 	} else {
 		if (verbose) {
-			// clang-format off
 			printf("[DBG] Mouse button %s (%s) at (%.2f, %.2f) - no app hit\n",
-				button_name, state_name,
-				current_pointer_x, current_pointer_y);
-			// clang-format on
+				button_name, state_name, current_pointer_x,
+				current_pointer_y);
 		}
 	}
 }

@@ -171,6 +171,17 @@ compare_icons(const void *a, const void *b)
 	return ic_b->size - ic_a->size;
 }
 
+// Build a heap-allocated icon path; caller must free.
+// Returns NULL on allocation failure.
+static char *
+make_icon_path(const char *dir, const char *size, const char *name,
+	const char *ext)
+{
+	char *p = NULL;
+	asprintf(&p, "%s/%s/apps/%s.%s", dir, size, name, ext);
+	return p;
+}
+
 // Find all icon variants for an application
 // Returns the best quality icon path, listing all candidates if verbose
 // Caller must free the returned string
@@ -221,11 +232,9 @@ find_best_icon(const char *icon_name)
 				continue;
 
 			// Try SVG
-			char *svg_path = NULL;
-			// clang-format off
-			if (asprintf(&svg_path, "%s/%s/apps/%s.svg",
-				theme_path, size_entry->d_name, icon_name) >= 0) {
-				// clang-format on
+			char *svg_path = make_icon_path(theme_path,
+				size_entry->d_name, icon_name, "svg");
+			if (svg_path) {
 				if (access(svg_path, F_OK) == 0) {
 					if (verbose >= 2)
 						printf("[DBG²]   Found SVG: "
@@ -256,11 +265,9 @@ find_best_icon(const char *icon_name)
 			}
 
 			// Try PNG
-			char *png_path = NULL;
-			// clang-format off
-			if (asprintf(&png_path, "%s/%s/apps/%s.png",
-				theme_path, size_entry->d_name, icon_name) >= 0) {
-				// clang-format on
+			char *png_path = make_icon_path(theme_path,
+				size_entry->d_name, icon_name, "png");
+			if (png_path) {
 				if (access(png_path, F_OK) == 0) {
 					// Extract size from directory name
 					// (e.g., "256x256" -> 256)
@@ -547,17 +554,24 @@ parse_config_file(FILE *fp)
 								"with missing "
 								"fields\n");
 						if (verbose >= 2) {
-							// clang-format off
-							const char *n = current_entry->name
-									? current_entry->name
-									: "(missing)";
-							const char *ic = current_entry->icon
-									? current_entry->icon
-									: "(missing)";
-							const char *ex = current_entry->exec
-									? current_entry->exec
-									: "(missing)";
-							// clang-format on
+							const char *n =
+								current_entry
+									->name ?
+								current_entry
+									->name :
+								"(missing)";
+							const char *ic =
+								current_entry
+									->icon ?
+								current_entry
+									->icon :
+								"(missing)";
+							const char *ex =
+								current_entry
+									->exec ?
+								current_entry
+									->exec :
+								"(missing)";
 							printf("[DBG²]   name: %s, icon: %s, exec: %s\n",
 								n, ic, ex);
 						}
