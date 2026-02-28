@@ -9,14 +9,41 @@ typedef struct {
 	char *name;
 	char *exec;
 	char *icon;
-	int   no_display;
+	int no_display;
 } DesktopEntry;
+
+// Controls when the application name label is drawn over its icon
+typedef enum {
+	LABEL_MODE_ALWAYS, // Always draw the label
+	LABEL_MODE_HOVER, // Draw only when the pointer is over the icon
+	LABEL_MODE_NEVER, // Never draw the label
+} LabelMode;
 
 // Configuration structure holding loaded applications
 typedef struct {
 	DesktopEntry **apps;
 	int count;
-	int icon_size;  // Default icon size in pixels (default: 64)
+	int icon_size; // Default icon size in pixels (default: 64)
+	// When to display the app-name label (default: hover)
+	LabelMode label_mode;
+	unsigned int
+		label_color; // Label color as 0xAARRGGBB (default: 0xFFFFFFFF)
+	int label_size; // Font size in points for the label (default: 10)
+	// Vertical distance in pixels from the bottom edge of the icon tile to
+	// the text baseline.
+	//
+	// Precise boundaries:
+	//   0           – baseline sits exactly on the bottom edge of the tile;
+	//                 descenders (g, p, y …) will be fully clipped.
+	//   ~font_size  – baseline is one full em above the bottom; the text
+	//                 floats near the middle of the icon for a 10 px font
+	//                 and a typical icon_size.
+	//   icon_size   – baseline at the top edge; entire glyph is above the
+	//                 tile and invisible.
+	//
+	// Recommended range: 4–16 px. Default is 10 (a small raise from the
+	// bottom that keeps ascenders and most descenders inside the tile).
+	int label_offset;
 } Config;
 
 // List all valid applications from /usr/share/applications/*.desktop
@@ -27,28 +54,24 @@ typedef struct {
 //   count_out – receives the number of entries in the returned array
 //
 // Returns NULL if an error occurs; check count_out for the count.
-DesktopEntry **
-list_all_applications(int *count_out);
+DesktopEntry **list_all_applications(int *count_out);
 
 // Free all application entries allocated by list_all_applications()
 //
 // Parameters:
 //   entries – the array returned by list_all_applications()
 //   count   – the count returned by list_all_applications()
-void
-free_applications(DesktopEntry **entries, int count);
+void free_applications(DesktopEntry **entries, int count);
 
 // Free a Config struct
-void
-free_config(Config *cfg);
+void free_config(Config *cfg);
 
 // Check if the ~/.config/labar.cfg file exists
 //
 // Returns:
 //   1 if the file exists
 //   0 if the file does not exist or cannot be accessed
-int
-config_file_exists(void);
+int config_file_exists(void);
 
 // Load the config file or create it if it doesn't exist
 // If the file doesn't exist, calls init_config() to create it
@@ -57,8 +80,7 @@ config_file_exists(void);
 // Returns:
 //   Config struct with apps array and count
 //   apps will be NULL and count 0 on failure
-Config
-load_config(void);
+Config load_config(void);
 
 // Write default config file with firefox and foot if they exist in the app list
 // Writes to ~/.config/labar.cfg
@@ -71,8 +93,7 @@ load_config(void);
 // Returns:
 //   1 if a config file was written
 //   0 if neither firefox nor foot were found, or on error
-int
-write_default_config(DesktopEntry **entries, int count);
+int write_default_config(DesktopEntry **entries, int count);
 
 // Create config file if loading failed
 // If config doesn't exist, tries to create it with firefox and foot
@@ -81,7 +102,6 @@ write_default_config(DesktopEntry **entries, int count);
 // Returns:
 //   0 if successful (config was created)
 //   1 if unable to proceed (no apps found or couldn't create config)
-int
-init_config(void);
+int init_config(void);
 
 #endif // CONFIG_H

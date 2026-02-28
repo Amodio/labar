@@ -48,6 +48,9 @@ int surf_height = 64;
 double current_pointer_x = 0.0;
 double current_pointer_y = 0.0;
 
+// Track the previously hovered icon to avoid spam
+int last_hovered_icon = -1;
+
 // ---------------------------------------------------------------------------
 // create_shm_buffer
 //
@@ -96,6 +99,63 @@ create_shm_buffer(int width, int height, uint32_t **out_data)
 	close(fd);		   // The mapping keeps the data alive
 
 	return buf;
+}
+
+// ---------------------------------------------------------------------------
+// draw_text
+//
+// Renders text onto the given pixel buffer using Cairo.
+// The text is centered horizontally and its baseline sits at y_offset,
+// measured from the top of the buffer (positive y points down).
+//
+// Parameters:
+//   data     – pointer to the ARGB8888 pixel buffer
+//   width    – buffer width in pixels
+//   height   – buffer height in pixels
+//   text     – the text string to render
+//   y_offset – distance from the top of the buffer to the text baseline
+//   color    – text color as 0xAARRGGBB
+// ---------------------------------------------------------------------------
+static void
+draw_text(uint32_t *data, int width, int height, const char *text, int y_offset,
+	unsigned int color)
+{
+	if (!text || text[0] == '\0')
+		return;
+
+	// Wrap the pixel buffer in a Cairo image surface
+	cairo_surface_t *cs =
+		cairo_image_surface_create_for_data((unsigned char *)data,
+			CAIRO_FORMAT_ARGB32, width, height, width * 4);
+	cairo_t *cr = cairo_create(cs);
+
+	// Set font and text properties
+	cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL,
+		CAIRO_FONT_WEIGHT_NORMAL);
+	cairo_set_font_size(cr, app_config.label_size);
+
+	// Get text extents to center it
+	cairo_text_extents_t extents;
+	cairo_text_extents(cr, text, &extents);
+
+	// Decode 0xAARRGGBB color
+	double a = ((color >> 24) & 0xFF) / 255.0;
+	double r = ((color >> 16) & 0xFF) / 255.0;
+	double g = ((color >> 8) & 0xFF) / 255.0;
+	double b = ((color) & 0xFF) / 255.0;
+	cairo_set_source_rgba(cr, r, g, b, a);
+
+	// Center the text horizontally.
+	// y_offset is the distance from the top to the baseline; subtracting
+	// y_bearing (which is negative for normal glyphs) moves the reference
+	// point so the visible top of the text lands just above y_offset.
+	double x = (width - extents.width) / 2.0 - extents.x_bearing;
+	double y = (double)y_offset;
+	cairo_move_to(cr, x, y);
+	cairo_show_text(cr, text);
+
+	cairo_destroy(cr);
+	cairo_surface_destroy(cs);
 }
 
 // ---------------------------------------------------------------------------
@@ -203,17 +263,42 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 				draw_svg(app_config.apps[i]->icon, tile_data,
 					icon_size, icon_size);
 
-				// Blit the tile onto the main buffer at the
-				// appropriate offset
+				// Draw the app name as a text overlay on the
+				// icon Create a temporary buffer for the icon
+				// with text overlay
+				uint32_t *text_overlay =
+					malloc(icon_size * icon_size * 4);
+				memcpy(text_overlay, tile_data,
+					icon_size * icon_size * 4);
+
+				free(tile_data);
+
+				// Draw the label only when label_mode is
+				// ALWAYS. HOVER mode is handled at render-time
+				// via pointer events; NEVER skips drawing
+				// entirely.
+				if (app_config.label_mode == LABEL_MODE_ALWAYS) {
+					// Baseline placed above the bottom edge
+					// by label_offset pixels so ascenders
+					// and descenders stay inside the tile.
+					int baseline = icon_size - app_config.label_offset;
+					draw_text(text_overlay, icon_size,
+						icon_size,
+						app_config.apps[i]->name,
+						baseline,
+						app_config.label_color);
+				}
+
+				// Blit the text overlay onto the main buffer
 				for (int ty = 0; ty < icon_size; ty++) {
 					uint32_t *src =
-						tile_data + (ty * icon_size);
+						text_overlay + (ty * icon_size);
 					uint32_t *dst = pixels
 						+ ((ty)*surf_width) + x_offset;
 					memcpy(dst, src, icon_size * 4);
 				}
 
-				free(tile_data);
+				free(text_overlay);
 				x_offset += icon_size;
 			}
 		}
@@ -257,6 +342,42 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 {
 	if (verbose)
 		printf("[DBG] Pointer left surface\n");
+
+	// Treat leaving the surface as moving to no icon: clear the hover label
+	// on whichever icon was last highlighted and reset the tracking index.
+	// clang-format off
+	if (last_hovered_icon >= 0
+		&& app_config.label_mode == LABEL_MODE_HOVER && buffer) {
+		// clang-format on
+		int icon_size = app_config.icon_size;
+		int idx = last_hovered_icon;
+
+		if (idx < app_config.count && app_config.apps[idx]->icon) {
+			int x_offset = idx * icon_size;
+
+			uint32_t *tile = malloc(icon_size * icon_size * 4);
+			if (tile) {
+				memset(tile, 0, icon_size * icon_size * 4);
+				draw_svg(app_config.apps[idx]->icon, tile,
+					icon_size, icon_size);
+				// No label — pointer has left the surface
+
+				for (int ty = 0; ty < icon_size; ty++) {
+					uint32_t *src = tile + ty * icon_size;
+					uint32_t *dst = pixels + ty * surf_width + x_offset;
+					memcpy(dst, src, icon_size * 4);
+				}
+				free(tile);
+
+				wl_surface_attach(surface, buffer, 0, 0);
+				wl_surface_damage(surface, 0, 0, surf_width,
+					surf_height);
+				wl_surface_commit(surface);
+			}
+		}
+	}
+
+	last_hovered_icon = -1;
 }
 
 static void
@@ -266,7 +387,78 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 	current_pointer_x = wl_fixed_to_double(surface_x);
 	current_pointer_y = wl_fixed_to_double(surface_y);
 
-	// Only print motion at verbose level 2 to avoid spam
+	// Determine which icon is under the pointer
+	int icon_index = -1;
+	if (app_config.icon_size > 0) {
+		icon_index = (int)(current_pointer_x / app_config.icon_size);
+		if (icon_index < 0 || icon_index >= app_config.count)
+			icon_index = -1;
+	}
+
+	// Only print when hovering icon changes to avoid spam
+	if (icon_index != last_hovered_icon) {
+		// In HOVER mode, repaint the affected icon tiles to add/remove
+		// the label
+		if (app_config.label_mode == LABEL_MODE_HOVER && buffer) {
+			int icon_size = app_config.icon_size;
+
+			// Helper lambda-like: repaint one icon tile with or
+			// without label We do this for the previously hovered
+			// icon (remove label) and the newly hovered icon (add
+			// label).
+			int repaint_indices[2] = {
+				last_hovered_icon, icon_index};
+			for (int r = 0; r < 2; r++) {
+				int idx = repaint_indices[r];
+				if (idx < 0 || idx >= app_config.count)
+					continue;
+				if (!app_config.apps[idx]->icon)
+					continue;
+
+				int x_offset = idx * icon_size;
+
+				// Re-render the SVG into a fresh tile
+				uint32_t *tile =
+					malloc(icon_size * icon_size * 4);
+				if (!tile)
+					continue;
+				memset(tile, 0, icon_size * icon_size * 4);
+				draw_svg(app_config.apps[idx]->icon, tile,
+					icon_size, icon_size);
+
+				// Add label only for the newly hovered icon
+				if (idx == icon_index) {
+					int baseline = icon_size - app_config.label_offset;
+					draw_text(tile, icon_size, icon_size,
+						app_config.apps[idx]->name,
+						baseline,
+						app_config.label_color);
+				}
+
+				// Blit the tile onto the main buffer
+				for (int ty = 0; ty < icon_size; ty++) {
+					uint32_t *src = tile + ty * icon_size;
+					uint32_t *dst = pixels + ty * surf_width + x_offset;
+					memcpy(dst, src, icon_size * 4);
+				}
+				free(tile);
+			}
+
+			// Commit the updated surface
+			wl_surface_attach(surface, buffer, 0, 0);
+			wl_surface_damage(surface, 0, 0, surf_width,
+				surf_height);
+			wl_surface_commit(surface);
+		}
+
+		last_hovered_icon = icon_index;
+		if (icon_index >= 0 && verbose >= 1) {
+			printf("[DBG] Hovering over icon/app [%d] '%s'\n",
+				icon_index, app_config.apps[icon_index]->name);
+		}
+	}
+
+	// Only print detailed motion at verbose level 2 to avoid spam
 	if (verbose >= 2) {
 		printf("[DBG²] Pointer motion at (%.2f, %.2f)\n",
 			current_pointer_x, current_pointer_y);
@@ -294,8 +486,10 @@ pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 		break;
 	}
 
+	// clang-format off
 	const char *state_name =
 		(state == WL_POINTER_BUTTON_STATE_PRESSED) ? "PRESSED" : "RELEASED";
+	// clang-format on
 
 	// Calculate which icon was clicked based on current pointer position
 	int icon_index = -1;
@@ -314,9 +508,11 @@ pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 			app_config.apps[icon_index]->name);
 	} else {
 		if (verbose) {
+			// clang-format off
 			printf("[DBG] Mouse button %s (%s) at (%.2f, %.2f) - no app hit\n",
-				button_name, state_name, current_pointer_x,
-				current_pointer_y);
+				button_name, state_name,
+				current_pointer_x, current_pointer_y);
+			// clang-format on
 		}
 	}
 }
@@ -344,8 +540,8 @@ pointer_axis(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 
 	if (icon_index >= 0) {
 		printf("[DBG] Scroll %s on icon/app #%d '%s' (value=%.2f)\n",
-			direction, icon_index, app_config.apps[icon_index]->name,
-			scroll_value);
+			direction, icon_index,
+			app_config.apps[icon_index]->name, scroll_value);
 	} else {
 		if (verbose) {
 			printf("[DBG] Scroll %s at (%.2f, %.2f) (value=%.2f)\n",
@@ -398,8 +594,8 @@ pointer_axis_discrete(void *data, struct wl_pointer *wl_pointer, uint32_t axis,
 
 	if (icon_index >= 0) {
 		printf("[DBG] Scroll %s on icon/app #%d '%s' (steps=%d)\n",
-			direction, icon_index, app_config.apps[icon_index]->name,
-			abs(discrete));
+			direction, icon_index,
+			app_config.apps[icon_index]->name, abs(discrete));
 	} else {
 		if (verbose) {
 			printf("[DBG] Scroll %s at (%.2f, %.2f) (steps=%d)\n",

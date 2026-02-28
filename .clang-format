@@ -7,16 +7,18 @@
 #
 # Some notable things that clang-format gets wrong:
 #  - no support for double-indenting before an opening brace
-#  - does not always round continuation indent/alignment to tab stops
+#  - adjacent string literal tokens split across lines will be space-aligned
+#    to the opening quote column; avoid manual line-breaks in string literals
 
 BasedOnStyle: LLVM
 UseTab: Always
 IndentWidth: 8
 ContinuationIndentWidth: 8
 AlignAfterOpenBracket: DontAlign
-AlignOperands: false
+AlignOperands: DontAlign
 AlwaysBreakAfterDefinitionReturnType: true
-BreakBeforeBinaryOperators: NonAssignment
+BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: false
 BreakBeforeBraces: Linux
 IndentCaseLabels: false
 PenaltyBreakOpenParenthesis: 100
@@ -33,9 +35,9 @@ IncludeCategories:
   - Regex: '<.*>'
   - Regex: '.*'
 
-ColumnLimit: 80
-TabWidth: 8
-IndentWrappedFunctionNames: false
-AllowShortFunctionsOnASingleLine: None
-AllowShortIfStatementsOnASingleLine: false
-AllowShortLoopsOnASingleLine: false
+#Added:
+ColumnLimit: 0
+AlignTrailingComments: false
+AlignEscapedNewlines: DontAlign
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false

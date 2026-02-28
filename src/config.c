@@ -205,8 +205,7 @@ find_best_icon(const char *icon_name)
 			continue;
 
 		char *theme_path = NULL;
-		if (asprintf(&theme_path, "%s/%s", icon_base,
-				theme_entry->d_name) < 0)
+		if (asprintf(&theme_path, "%s/%s", icon_base, theme_entry->d_name) < 0)
 			continue;
 
 		// Check if it's a directory
@@ -223,9 +222,10 @@ find_best_icon(const char *icon_name)
 
 			// Try SVG
 			char *svg_path = NULL;
-			if (asprintf(&svg_path, "%s/%s/apps/%s.svg", theme_path,
-					size_entry->d_name, icon_name)
-				>= 0) {
+			// clang-format off
+			if (asprintf(&svg_path, "%s/%s/apps/%s.svg",
+				theme_path, size_entry->d_name, icon_name) >= 0) {
+				// clang-format on
 				if (access(svg_path, F_OK) == 0) {
 					if (verbose >= 2)
 						printf("[DBG²]   Found SVG: "
@@ -257,9 +257,10 @@ find_best_icon(const char *icon_name)
 
 			// Try PNG
 			char *png_path = NULL;
-			if (asprintf(&png_path, "%s/%s/apps/%s.png", theme_path,
-					size_entry->d_name, icon_name)
-				>= 0) {
+			// clang-format off
+			if (asprintf(&png_path, "%s/%s/apps/%s.png",
+				theme_path, size_entry->d_name, icon_name) >= 0) {
+				// clang-format on
 				if (access(png_path, F_OK) == 0) {
 					// Extract size from directory name
 					// (e.g., "256x256" -> 256)
@@ -469,6 +470,10 @@ parse_config_file(FILE *fp)
 	Config cfg = {0};
 	cfg.apps = malloc(10 * sizeof(DesktopEntry *));
 	cfg.icon_size = 64; // Default icon size
+	cfg.label_mode = LABEL_MODE_HOVER; // Show label on hover by default
+	cfg.label_color = 0xFFFFFFFF; // Opaque white by default
+	cfg.label_size = 10; // 10 pt font by default
+	cfg.label_offset = 10; // Baseline 10 px above the bottom edge
 	if (!cfg.apps)
 		return cfg;
 
@@ -542,27 +547,19 @@ parse_config_file(FILE *fp)
 								"with missing "
 								"fields\n");
 						if (verbose >= 2) {
-							printf("[DBG²]   name: "
-								"%s, icon: %s, "
-								"exec: %s\n",
-								current_entry->name
-									? current_entry
-										->name
-									: "(mis"
-										"sing"
-										")",
-								current_entry->icon
-									? current_entry
-										->icon
-									: "(mis"
-										"sing"
-										")",
-								current_entry->exec
-									? current_entry
-										->exec
-									: "(mis"
-									"sing"
-									")");
+							// clang-format off
+							const char *n = current_entry->name
+									? current_entry->name
+									: "(missing)";
+							const char *ic = current_entry->icon
+									? current_entry->icon
+									: "(missing)";
+							const char *ex = current_entry->exec
+									? current_entry->exec
+									: "(missing)";
+							// clang-format on
+							printf("[DBG²]   name: %s, icon: %s, exec: %s\n",
+								n, ic, ex);
 						}
 						free_desktop_entry(
 							current_entry);
@@ -619,6 +616,39 @@ parse_config_file(FILE *fp)
 				if (verbose >= 2)
 					printf("[DBG²]   icon_size: %d\n",
 						cfg.icon_size);
+			} else if (strcmp(key, "label_mode") == 0) {
+				if (strcmp(value, "hover") == 0)
+					cfg.label_mode = LABEL_MODE_HOVER;
+				else if (strcmp(value, "never") == 0)
+					cfg.label_mode = LABEL_MODE_NEVER;
+				else
+					cfg.label_mode = LABEL_MODE_ALWAYS;
+				if (verbose >= 2)
+					printf("[DBG²]   label_mode: %s\n",
+						value);
+			} else if (strcmp(key, "label_color") == 0) {
+				// Accept #RRGGBB or #RRGGBBAA
+				const char *hex = value;
+				if (hex[0] == '#')
+					hex++;
+				unsigned long parsed = strtoul(hex, NULL, 16);
+				if (strlen(hex) <= 6)
+					cfg.label_color = 0xFF000000 | (unsigned int)parsed;
+				else
+					cfg.label_color = (unsigned int)parsed;
+				if (verbose >= 2)
+					printf("[DBG²]   label_color: 0x%08X\n",
+						cfg.label_color);
+			} else if (strcmp(key, "label_offset") == 0) {
+				cfg.label_offset = atoi(value);
+				if (verbose >= 2)
+					printf("[DBG²]   label_offset: %d\n",
+						cfg.label_offset);
+			} else if (strcmp(key, "label_size") == 0) {
+				cfg.label_size = atoi(value);
+				if (verbose >= 2)
+					printf("[DBG²]   label_size: %d\n",
+						cfg.label_size);
 			}
 			continue;
 		}
@@ -803,7 +833,22 @@ write_default_config(DesktopEntry **entries, int count)
 		"# Edit this file to add or remove applications from the "
 		"bar\n\n");
 	fprintf(fp, "[global]\n");
-	fprintf(fp, "icon_size=64\n\n");
+	fprintf(fp, "icon_size=64\n");
+	fprintf(fp, "# label_mode: always | hover | never\n");
+	fprintf(fp, "label_mode=hover\n");
+	fprintf(fp, "# label_color: hex color #RRGGBB or #RRGGBBAA\n");
+	fprintf(fp, "label_color=#FFFFFF\n");
+	fprintf(fp,
+		"# label_offset: pixels from the bottom edge of the icon "
+		"to the text baseline\n");
+	fprintf(fp,
+		"# 0 = bottom edge (descenders clipped), icon_size = top "
+		"edge (text invisible)\n");
+	fprintf(fp, "# recommended range: 4-16\n");
+	fprintf(fp, "label_offset=10\n");
+	fprintf(fp,
+		"# label_size: font size in points for the app-name label\n");
+	fprintf(fp, "label_size=10\n\n");
 	fprintf(fp, "[apps]\n");
 
 	if (firefox) {
