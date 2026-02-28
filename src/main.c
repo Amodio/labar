@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <getopt.h>
 #include <librsvg/rsvg.h>
+#include <linux/input-event-codes.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,6 +29,8 @@ struct wl_registry *registry;
 struct wl_compositor *compositor;
 struct wl_shm *shm;
 struct zwlr_layer_shell_v1 *layer_shell;
+struct wl_seat *seat;
+struct wl_pointer *pointer;
 
 // ---------------------------------------------------------------------------
 // Layer-surface state
@@ -40,6 +43,10 @@ uint32_t *pixels; // Pointer into the SHM mapping
 // Surface dimensions — updated on the first configure event from the compositor
 int surf_width = 64;
 int surf_height = 64;
+
+// Current pointer position (updated by pointer_motion)
+double current_pointer_x = 0.0;
+double current_pointer_y = 0.0;
 
 // ---------------------------------------------------------------------------
 // create_shm_buffer
@@ -231,6 +238,215 @@ layer_closed(void *data, struct zwlr_layer_surface_v1 *surf)
 	exit(0);
 }
 
+// ---------------------------------------------------------------------------
+// Pointer listeners — handle mouse events
+// ---------------------------------------------------------------------------
+static void
+pointer_enter(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
+	struct wl_surface *surface, wl_fixed_t surface_x, wl_fixed_t surface_y)
+{
+	if (verbose)
+		printf("[DBG] Pointer entered surface at (%.2f, %.2f)\n",
+			wl_fixed_to_double(surface_x),
+			wl_fixed_to_double(surface_y));
+}
+
+static void
+pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
+	struct wl_surface *surface)
+{
+	if (verbose)
+		printf("[DBG] Pointer left surface\n");
+}
+
+static void
+pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
+	wl_fixed_t surface_x, wl_fixed_t surface_y)
+{
+	current_pointer_x = wl_fixed_to_double(surface_x);
+	current_pointer_y = wl_fixed_to_double(surface_y);
+
+	// Only print motion at verbose level 2 to avoid spam
+	if (verbose >= 2) {
+		printf("[DBG²] Pointer motion at (%.2f, %.2f)\n",
+			current_pointer_x, current_pointer_y);
+	}
+}
+
+static void
+pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
+	uint32_t time, uint32_t button, uint32_t state)
+{
+	// Determine which button was clicked
+	const char *button_name;
+	switch (button) {
+	case BTN_LEFT:
+		button_name = "LEFT";
+		break;
+	case BTN_MIDDLE:
+		button_name = "MIDDLE";
+		break;
+	case BTN_RIGHT:
+		button_name = "RIGHT";
+		break;
+	default:
+		button_name = "UNKNOWN";
+		break;
+	}
+
+	const char *state_name =
+		(state == WL_POINTER_BUTTON_STATE_PRESSED) ? "PRESSED" : "RELEASED";
+
+	// Calculate which icon was clicked based on current pointer position
+	int icon_index = -1;
+	if (app_config.icon_size > 0) {
+		icon_index = (int)(current_pointer_x / app_config.icon_size);
+		// Clamp to valid range
+		if (icon_index < 0)
+			icon_index = -1;
+		if (icon_index >= app_config.count)
+			icon_index = -1;
+	}
+
+	if (icon_index >= 0 && icon_index < app_config.count) {
+		printf("[DBG] Mouse button %s (%s) on icon/app #%d '%s'\n",
+			button_name, state_name, icon_index,
+			app_config.apps[icon_index]->name);
+	} else {
+		if (verbose) {
+			printf("[DBG] Mouse button %s (%s) at (%.2f, %.2f) - no app hit\n",
+				button_name, state_name, current_pointer_x,
+				current_pointer_y);
+		}
+	}
+}
+
+static void
+pointer_axis(void *data, struct wl_pointer *wl_pointer, uint32_t time,
+	uint32_t axis, wl_fixed_t value)
+{
+	double scroll_value = wl_fixed_to_double(value);
+	const char *direction = "";
+	int icon_index = -1;
+
+	if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
+		direction = (scroll_value > 0) ? "DOWN" : "UP";
+	} else if (axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL) {
+		direction = (scroll_value > 0) ? "RIGHT" : "LEFT";
+	}
+
+	// Determine which icon is under the pointer
+	if (app_config.icon_size > 0) {
+		icon_index = (int)(current_pointer_x / app_config.icon_size);
+		if (icon_index < 0 || icon_index >= app_config.count)
+			icon_index = -1;
+	}
+
+	if (icon_index >= 0) {
+		printf("[DBG] Scroll %s on icon/app #%d '%s' (value=%.2f)\n",
+			direction, icon_index, app_config.apps[icon_index]->name,
+			scroll_value);
+	} else {
+		if (verbose) {
+			printf("[DBG] Scroll %s at (%.2f, %.2f) (value=%.2f)\n",
+				direction, current_pointer_x, current_pointer_y,
+				scroll_value);
+		}
+	}
+}
+
+static void
+pointer_frame(void *data, struct wl_pointer *wl_pointer)
+{
+	// End of pointer event frame
+}
+
+static void
+pointer_axis_source(void *data, struct wl_pointer *wl_pointer,
+	uint32_t axis_source)
+{
+	// Axis source event (wheel, finger, continuous, etc.)
+}
+
+static void
+pointer_axis_stop(void *data, struct wl_pointer *wl_pointer, uint32_t time,
+	uint32_t axis)
+{
+	// Axis stop event
+}
+
+static void
+pointer_axis_discrete(void *data, struct wl_pointer *wl_pointer, uint32_t axis,
+	int32_t discrete)
+{
+	// Discrete axis event (for wheel/stepped scrolling)
+	const char *direction = "";
+	int icon_index = -1;
+
+	if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
+		direction = (discrete > 0) ? "DOWN" : "UP";
+	} else if (axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL) {
+		direction = (discrete > 0) ? "RIGHT" : "LEFT";
+	}
+
+	// Determine which icon is under the pointer
+	if (app_config.icon_size > 0) {
+		icon_index = (int)(current_pointer_x / app_config.icon_size);
+		if (icon_index < 0 || icon_index >= app_config.count)
+			icon_index = -1;
+	}
+
+	if (icon_index >= 0) {
+		printf("[DBG] Scroll %s on icon/app #%d '%s' (steps=%d)\n",
+			direction, icon_index, app_config.apps[icon_index]->name,
+			abs(discrete));
+	} else {
+		if (verbose) {
+			printf("[DBG] Scroll %s at (%.2f, %.2f) (steps=%d)\n",
+				direction, current_pointer_x, current_pointer_y,
+				abs(discrete));
+		}
+	}
+}
+
+static const struct wl_pointer_listener pointer_listener = {
+	.enter = pointer_enter,
+	.leave = pointer_leave,
+	.motion = pointer_motion,
+	.button = pointer_button,
+	.axis = pointer_axis,
+	.frame = pointer_frame,
+	.axis_source = pointer_axis_source,
+	.axis_stop = pointer_axis_stop,
+	.axis_discrete = pointer_axis_discrete,
+};
+
+// ---------------------------------------------------------------------------
+// Seat listener — used to get the pointer
+// ---------------------------------------------------------------------------
+static void
+seat_capabilities(void *data, struct wl_seat *seat, uint32_t capabilities)
+{
+	if ((capabilities & WL_SEAT_CAPABILITY_POINTER) && !pointer) {
+		pointer = wl_seat_get_pointer(seat);
+		wl_pointer_add_listener(pointer, &pointer_listener, NULL);
+		if (verbose)
+			printf("[DBG] Pointer capability detected and bound\n");
+	}
+}
+
+static void
+seat_name(void *data, struct wl_seat *seat, const char *name)
+{
+	if (verbose)
+		printf("[DBG] Seat name: %s\n", name);
+}
+
+static const struct wl_seat_listener seat_listener = {
+	.capabilities = seat_capabilities,
+	.name = seat_name,
+};
+
 static const struct zwlr_layer_surface_v1_listener layer_listener = {
 	.configure = layer_configure,
 	.closed = layer_closed,
@@ -251,6 +467,11 @@ registry_add(void *data, struct wl_registry *reg, uint32_t name,
 			&zwlr_layer_shell_v1_interface, 1);
 	} else if (strcmp(interface, wl_shm_interface.name) == 0) {
 		shm = wl_registry_bind(reg, name, &wl_shm_interface, 1);
+	} else if (strcmp(interface, wl_seat_interface.name) == 0) {
+		seat = wl_registry_bind(reg, name, &wl_seat_interface, 1);
+		wl_seat_add_listener(seat, &seat_listener, NULL);
+		if (verbose)
+			printf("[DBG] Bound to wl_seat\n");
 	}
 }
 
