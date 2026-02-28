@@ -32,3 +32,10 @@ ForEachMacros: ['for_each_view',
 IncludeCategories:
   - Regex: '<.*>'
   - Regex: '.*'
+
+ColumnLimit: 80
+TabWidth: 8
+IndentWrappedFunctionNames: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false

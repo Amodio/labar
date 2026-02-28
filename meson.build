@@ -14,10 +14,14 @@ librsvg_dep = dependency('librsvg-2.0')
 # Build protocols code (generated from XML)
 subdir('protocols')
 
+# Documentation
+subdir('doc')
+
 # Main executable
 executable(
   'labar',
   'src/main.c',
+  'src/config.c',
   dependencies: [
     wayland_client,
     wl_protocols,
