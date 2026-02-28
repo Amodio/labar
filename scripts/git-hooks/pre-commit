@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# -----------------------------
+# Tool availability checks
+# -----------------------------
+
+if ! command -v clang-format >/dev/null 2>&1; then
+    echo "Error: clang-format not found in PATH."
+    exit 1
+fi
+
+# Detect editorconfig binary
+if command -v ec >/dev/null 2>&1; then
+    EC_CMD="ec"
+elif command -v editorconfig-checker >/dev/null 2>&1; then
+    EC_CMD="editorconfig-checker"
+#elif command -v ex.exe >/dev/null 2>&1; then
+#    EC_CMD="ex.exe"
+else
+    echo "Error: editorconfig-checker binary not found."
+    exit 1
+fi
+
+# -----------------------------
+# Collect staged files
+# -----------------------------
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR || true)
+
+if [ -z "$STAGED_FILES" ]; then
+    exit 0
+fi
+
+# -----------------------------
+# 1️⃣ clang-format check (C/C++)
+# -----------------------------
+CPP_FILES=$(echo "$STAGED_FILES" | grep -E '\.(c|cc|cpp|cxx|h|hh|hpp|hxx)$' || true)
+
+if [ -n "$CPP_FILES" ]; then
+    DIFF_OUTPUT=$(git clang-format --staged --diff $CPP_FILES || true)
+
+    if echo "$DIFF_OUTPUT" | grep -q "^diff"; then
+        echo "❌ clang-format issues detected:"
+        echo "$DIFF_OUTPUT"
+        echo ""
+        echo "To fix clang-format issues, run either:"
+        echo "  git clang-format"
+        echo "Or:"
+        echo "  clang-format -i $CPP_FILES"
+
+        exit 1
+    fi
+fi
+
+# -----------------------------
+# 2️⃣ editorconfig-checker check
+# -----------------------------
+EC_OUTPUT=$($EC_CMD $STAGED_FILES || true)
+
+if [ -n "$EC_OUTPUT" ]; then
+    echo "❌ EditorConfig violations detected:"
+    echo "$EC_OUTPUT"
+    exit 1
+fi
+
+exit 0
