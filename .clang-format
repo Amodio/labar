@@ -7,6 +7,8 @@
 #
 # Some notable things that clang-format gets wrong:
 #  - no support for double-indenting before an opening brace
+#  - adjacent string literal tokens split across lines will be space-aligned
+#    to the opening quote column; avoid manual line-breaks in string literals
 
 BasedOnStyle: LLVM
 UseTab: Always

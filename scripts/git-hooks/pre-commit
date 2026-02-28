@@ -43,10 +43,8 @@ if [ -n "$CPP_FILES" ]; then
         echo "❌ clang-format issues detected:"
         echo "$DIFF_OUTPUT"
         echo ""
-        echo "To fix clang-format issues, run either:"
+        echo "To fix clang-format issues, run:"
         echo "  git clang-format"
-        echo "Or:"
-        echo "  clang-format -i $CPP_FILES"
 
         exit 1
     fi
