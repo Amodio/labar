@@ -6,43 +6,43 @@ extern int verbose;
 
 // Opaque struct representing a parsed .desktop file entry
 typedef struct {
-    char *name;
-    char *exec;
-    char *icon;
-    int terminal;
+	char *name;
+	char *exec;
+	char *icon;
+	int terminal;
 } DesktopEntry;
 
 // Controls when the application name label is drawn over its icon
 typedef enum {
-    LABEL_MODE_ALWAYS, // Always draw the label
-    LABEL_MODE_HOVER,  // Draw only when the pointer is over the icon
-    LABEL_MODE_NEVER,  // Never draw the label
+	LABEL_MODE_ALWAYS, // Always draw the label
+	LABEL_MODE_HOVER,  // Draw only when the pointer is over the icon
+	LABEL_MODE_NEVER,  // Never draw the label
 } LabelMode;
 
 // Configuration structure holding loaded applications
 typedef struct {
-    DesktopEntry **apps;
-    int count;
-    int icon_size; // Default icon size in pixels (default: 64)
-    // When to display the app-name label (default: hover)
-    LabelMode label_mode;
-    unsigned int label_color; // Label color as 0xAARRGGBB (default: 0xFFFFFFFF)
-    int label_size;	      // Font size in points for the label (default: 10)
-    // Vertical distance in pixels from the bottom edge of the icon tile to
-    // the text baseline.
-    //
-    // Precise boundaries:
-    //   0           – baseline sits exactly on the bottom edge of the tile;
-    //                 descenders (g, p, y …) will be fully clipped.
-    //   ~font_size  – baseline is one full em above the bottom; the text
-    //                 floats near the middle of the icon for a 10 px font
-    //                 and a typical icon_size.
-    //   icon_size   – baseline at the top edge; entire glyph is above the
-    //                 tile and invisible.
-    //
-    // Recommended range: 4–16 px. Default is 10 (a small raise from the
-    // bottom that keeps ascenders and most descenders inside the tile).
-    int label_offset;
+	DesktopEntry **apps;
+	int count;
+	int icon_size; // Default icon size in pixels (default: 64)
+	// When to display the app-name label (default: hover)
+	LabelMode label_mode;
+	unsigned int label_color; // Label color as 0xAARRGGBB (default: 0xFFFFFFFF)
+	int label_size;			  // Font size in points for the label (default: 10)
+	// Vertical distance in pixels from the bottom edge of the icon tile to
+	// the text baseline.
+	//
+	// Precise boundaries:
+	//   0           – baseline sits exactly on the bottom edge of the tile;
+	//                 descenders (g, p, y …) will be fully clipped.
+	//   ~font_size  – baseline is one full em above the bottom; the text
+	//                 floats near the middle of the icon for a 10 px font
+	//                 and a typical icon_size.
+	//   icon_size   – baseline at the top edge; entire glyph is above the
+	//                 tile and invisible.
+	//
+	// Recommended range: 4–16 px. Default is 10 (a small raise from the
+	// bottom that keeps ascenders and most descenders inside the tile).
+	int label_offset;
 } Config;
 
 // List all valid applications from /usr/share/applications/*.desktop

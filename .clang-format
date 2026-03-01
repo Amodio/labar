@@ -37,3 +37,4 @@ IncludeCategories:
 
 # Added this to prevent space-based alignment in strings
 BreakStringLiterals: false
+TabWidth: 4
