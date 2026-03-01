@@ -12,12 +12,12 @@ Now with Wayland replacing X11, I am gladly using
 [labwc](https://labwc.github.io).
 
 [lavalauncher](https://git.sr.ht/~leon_plickat/lavalauncher) is the closest
-dock to wbar that I have found, but it also seems discontinued (for 4 years)
+dock to my knowledge, but it also seems discontinued (for 4 years)
 and lacks features (like transparency).
 
 ## Getting Started
 
-### Requirements
+### Compatibility
 
 Your Wayland compositor must implement the
 [wlr-protocols](https://gitlab.freedesktop.org/wlroots/wlr-protocols).
@@ -44,7 +44,18 @@ sudo meson install -C build/
 Contributions (issues/PR) are welcome aswell as handling packages for
 distributions!
 
-To install (locally) the pre-commit hook (to check the coding style), run once:
+To install (locally) the pre-commit hook (checks the coding style), run once:
 ```bash
 ./scripts/install-hooks.sh
 ```
+
+## Ideas
+ * add volume icon
+ * Add the clock/date
+ * add -h option / fix man-page
+ * Add HiDPI scaling support
+ * add xdg-output support (all by default)
+
+ * add -c option to show a wbar-config equivalent window
+ * Add the network activity (up/down speed)
+ * Add the CPU/RAM usage
