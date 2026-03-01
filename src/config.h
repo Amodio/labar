@@ -15,8 +15,8 @@ typedef struct {
 // Controls when the application name label is drawn over its icon
 typedef enum {
 	LABEL_MODE_ALWAYS, // Always draw the label
-	LABEL_MODE_HOVER, // Draw only when the pointer is over the icon
-	LABEL_MODE_NEVER, // Never draw the label
+	LABEL_MODE_HOVER,  // Draw only when the pointer is over the icon
+	LABEL_MODE_NEVER,  // Never draw the label
 } LabelMode;
 
 // Configuration structure holding loaded applications
@@ -28,7 +28,7 @@ typedef struct {
 	LabelMode label_mode;
 	unsigned int
 		label_color; // Label color as 0xAARRGGBB (default: 0xFFFFFFFF)
-	int label_size; // Font size in points for the label (default: 10)
+	int label_size;	     // Font size in points for the label (default: 10)
 	// Vertical distance in pixels from the bottom edge of the icon tile to
 	// the text baseline.
 	//

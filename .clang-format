@@ -35,10 +35,5 @@ IncludeCategories:
   - Regex: '<.*>'
   - Regex: '.*'
 
-#Added:
-ColumnLimit: 0
+# Added this to prevent space-based alignment in strings
 BreakStringLiterals: false
-AlignTrailingComments: false
-AlignEscapedNewlines: DontAlign
-AlignConsecutiveAssignments: false
-AlignConsecutiveDeclarations: false

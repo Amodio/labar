@@ -21,9 +21,7 @@ static char **parse_exec(const char *exec, int *argc_out);
  * - Modifies argv/argc in-place.
  * - Returns 0 on success, -1 on invalid field code.
  */
-static int expand_field_codes(DesktopEntry *app,
-	char ***argvp,
-	int *argcp);
+static int expand_field_codes(DesktopEntry *app, char ***argvp, int *argcp);
 
 static char **
 parse_exec(const char *exec, int *argc_out)
@@ -80,9 +78,7 @@ parse_exec(const char *exec, int *argc_out)
 }
 
 static int
-expand_field_codes(DesktopEntry *app,
-	char ***argvp,
-	int *argcp)
+expand_field_codes(DesktopEntry *app, char ***argvp, int *argcp)
 {
 	char **argv = *argvp;
 	int argc = *argcp;
@@ -93,16 +89,15 @@ expand_field_codes(DesktopEntry *app,
 	for (int i = 0; i < argc; i++) {
 		char *arg = argv[i];
 
-		if (strcmp(arg, "%f") == 0 ||
-			strcmp(arg, "%F") == 0 ||
-			strcmp(arg, "%u") == 0 ||
-			strcmp(arg, "%U") == 0) {
+		if (strcmp(arg, "%f") == 0 || strcmp(arg, "%F") == 0 ||
+			strcmp(arg, "%u") == 0 || strcmp(arg, "%U") == 0) {
 			continue; // ignore (no file support)
 		}
 
 		if (strcmp(arg, "%i") == 0) {
 			if (app->icon) {
-				newv = realloc(newv, sizeof(char *) * (newc + 2));
+				newv = realloc(newv,
+					sizeof(char *) * (newc + 2));
 				newv[newc++] = strdup("--icon");
 				newv[newc++] = strdup(app->icon);
 			}
@@ -117,7 +112,8 @@ expand_field_codes(DesktopEntry *app,
 
 		if (strcmp(arg, "%k") == 0) {
 			if (app->exec) {
-				newv = realloc(newv, sizeof(char *) * (newc + 1));
+				newv = realloc(newv,
+					sizeof(char *) * (newc + 1));
 				newv[newc++] = strdup(app->exec);
 			}
 			continue;
@@ -207,7 +203,8 @@ launch_app(DesktopEntry *app)
 			_exit(1);
 		} else {
 			if (verbose >= 2)
-				printf("[DBG²] -> launching app %s: %s\n", app->name, argv[0]);
+				printf("[DBG²] -> launching app %s: %s\n",
+					app->name, argv[0]);
 			execvp(argv[0], argv);
 			perror("execvp");
 			_exit(1);

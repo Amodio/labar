@@ -196,8 +196,8 @@ draw_svg(const char *path, uint32_t *data, int width, int height)
 
 	// Determine the SVG's intrinsic size so we can scale correctly
 	double svg_w = 0, svg_h = 0;
-	if (!rsvg_handle_get_intrinsic_size_in_pixels(handle, &svg_w, &svg_h)
-		|| svg_w == 0 || svg_h == 0) {
+	if (!rsvg_handle_get_intrinsic_size_in_pixels(handle, &svg_w, &svg_h) ||
+		svg_w == 0 || svg_h == 0) {
 		// Intrinsic size unavailable — fall back to a safe default
 		svg_w = 128;
 		svg_h = 128;
@@ -238,8 +238,7 @@ draw_png(const char *path, uint32_t *data, int width, int height)
 	cairo_paint(cr);
 
 	// Scale to fit
-	cairo_scale(cr, (double)width / img_w,
-		(double)height / img_h);
+	cairo_scale(cr, (double)width / img_w, (double)height / img_h);
 
 	cairo_set_source_surface(cr, img, 0, 0);
 	cairo_paint(cr);
@@ -330,11 +329,13 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 				// ALWAYS. HOVER mode is handled at render-time
 				// via pointer events; NEVER skips drawing
 				// entirely.
-				if (app_config.label_mode == LABEL_MODE_ALWAYS) {
+				if (app_config.label_mode ==
+					LABEL_MODE_ALWAYS) {
 					// Baseline placed above the bottom edge
 					// by label_offset pixels so ascenders
 					// and descenders stay inside the tile.
-					int baseline = icon_size - app_config.label_offset;
+					int baseline = icon_size -
+						app_config.label_offset;
 					draw_text(text_overlay, icon_size,
 						icon_size,
 						app_config.apps[i]->name,
@@ -346,8 +347,8 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 				for (int ty = 0; ty < icon_size; ty++) {
 					uint32_t *src =
 						text_overlay + (ty * icon_size);
-					uint32_t *dst = pixels
-						+ ((ty)*surf_width) + x_offset;
+					uint32_t *dst = pixels +
+						((ty)*surf_width) + x_offset;
 					memcpy(dst, src, icon_size * 4);
 				}
 
@@ -415,7 +416,8 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 
 				for (int ty = 0; ty < icon_size; ty++) {
 					uint32_t *src = tile + ty * icon_size;
-					uint32_t *dst = pixels + ty * surf_width + x_offset;
+					uint32_t *dst = pixels +
+						ty * surf_width + x_offset;
 					memcpy(dst, src, icon_size * 4);
 				}
 				free(tile);
@@ -479,7 +481,8 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 
 				// Add label only for the newly hovered icon
 				if (idx == icon_index) {
-					int baseline = icon_size - app_config.label_offset;
+					int baseline = icon_size -
+						app_config.label_offset;
 					draw_text(tile, icon_size, icon_size,
 						app_config.apps[idx]->name,
 						baseline,
@@ -489,7 +492,8 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 				// Blit the tile onto the main buffer
 				for (int ty = 0; ty < icon_size; ty++) {
 					uint32_t *src = tile + ty * icon_size;
-					uint32_t *dst = pixels + ty * surf_width + x_offset;
+					uint32_t *dst = pixels +
+						ty * surf_width + x_offset;
 					memcpy(dst, src, icon_size * 4);
 				}
 				free(tile);
@@ -558,7 +562,8 @@ pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 				button_name, state_name, icon_index,
 				app_config.apps[icon_index]->name);
 		}
-		if (button == BTN_LEFT && state == WL_POINTER_BUTTON_STATE_PRESSED) {
+		if (button == BTN_LEFT &&
+			state == WL_POINTER_BUTTON_STATE_PRESSED) {
 			launch_app(app_config.apps[icon_index]);
 		}
 	} else {
@@ -595,7 +600,8 @@ pointer_axis(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 		if (verbose) {
 			printf("[DBG] Scroll %s on icon/app #%d '%s' (value=%.2f)\n",
 				direction, icon_index,
-				app_config.apps[icon_index]->name, scroll_value);
+				app_config.apps[icon_index]->name,
+				scroll_value);
 		}
 	} else {
 		if (verbose) {
@@ -736,12 +742,11 @@ main(int argc, char *argv[])
 {
 	// Parse command-line arguments
 	int opt;
-	static struct option long_options[] = {
-		{"verbose", no_argument, 0, 'v'},
-		{"version", no_argument, 0, 'V'},
-		{0, 0, 0, 0}};
+	static struct option long_options[] = {{"verbose", no_argument, 0, 'v'},
+		{"version", no_argument, 0, 'V'}, {0, 0, 0, 0}};
 
-	while ((opt = getopt_long(argc, argv, "vV", long_options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "vV", long_options, NULL)) !=
+		-1) {
 		switch (opt) {
 		case 'v':
 			verbose++;

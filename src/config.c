@@ -223,7 +223,8 @@ find_best_icon(const char *icon_name)
 			continue;
 
 		char *theme_path = NULL;
-		if (asprintf(&theme_path, "%s/%s", icon_base, theme_entry->d_name) < 0)
+		if (asprintf(&theme_path, "%s/%s", icon_base,
+			    theme_entry->d_name) < 0)
 			continue;
 
 		// Check if it's a directory
@@ -245,14 +246,14 @@ find_best_icon(const char *icon_name)
 				if (access(svg_path, F_OK) == 0) {
 					if (verbose >= 2)
 						printf("[DBG²]   Found SVG: "
-							"%s\n", svg_path);
+						       "%s\n",
+							svg_path);
 					if (candidate_count >= capacity) {
 						capacity *= 2;
 						IconCandidate *tmp = realloc(
 							candidates,
-							capacity
-								* sizeof(
-									IconCandidate));
+							capacity *
+								sizeof(IconCandidate));
 						if (tmp)
 							candidates = tmp;
 						else {
@@ -264,7 +265,7 @@ find_best_icon(const char *icon_name)
 						svg_path;
 					candidates[candidate_count].size =
 						999; // SVG is scalable (highest
-							// priority)
+						     // priority)
 					candidate_count++;
 				} else {
 					free(svg_path);
@@ -284,16 +285,15 @@ find_best_icon(const char *icon_name)
 
 					if (verbose >= 2)
 						printf("[DBG²]   Found PNG "
-							"(%dpx): %s\n",
+						       "(%dpx): %s\n",
 							size, png_path);
 
 					if (candidate_count >= capacity) {
 						capacity *= 2;
 						IconCandidate *tmp = realloc(
 							candidates,
-							capacity
-								* sizeof(
-									IconCandidate));
+							capacity *
+								sizeof(IconCandidate));
 						if (tmp)
 							candidates = tmp;
 						else {
@@ -393,7 +393,7 @@ list_all_applications(int *count_out)
 		if (strlen(entry->d_name) < 9)
 			continue;
 		if (strcmp(entry->d_name + strlen(entry->d_name) - 8,
-				".desktop") != 0)
+			    ".desktop") != 0)
 			continue;
 
 		// Build full path
@@ -477,10 +477,10 @@ parse_config_file(FILE *fp)
 {
 	Config cfg = {0};
 	cfg.apps = malloc(10 * sizeof(DesktopEntry *));
-	cfg.icon_size = 64; // Default icon size
+	cfg.icon_size = 64;		   // Default icon size
 	cfg.label_mode = LABEL_MODE_HOVER; // Show label on hover by default
-	cfg.label_color = 0xFFFFFFFF; // Opaque white by default
-	cfg.label_size = 10; // 10 pt font by default
+	cfg.label_color = 0xFFFFFFFF;	   // Opaque white by default
+	cfg.label_size = 10;		   // 10 pt font by default
 	cfg.label_offset = 10; // Baseline 10 px above the bottom edge
 	if (!cfg.apps)
 		return cfg;
@@ -513,16 +513,15 @@ parse_config_file(FILE *fp)
 				if (current_entry) {
 					// Only add if all required fields are
 					// present
-					if (current_entry->name
-						&& current_entry->exec
-						&& current_entry->icon) {
+					if (current_entry->name &&
+						current_entry->exec &&
+						current_entry->icon) {
 						if (cfg.count >= capacity) {
 							capacity *= 2;
 							DesktopEntry **tmp = realloc(
 								cfg.apps,
-								capacity
-									* sizeof(
-										DesktopEntry
+								capacity *
+									sizeof(DesktopEntry
 											*));
 							if (!tmp) {
 								free_desktop_entry(
@@ -535,7 +534,7 @@ parse_config_file(FILE *fp)
 							current_entry;
 						if (verbose >= 2)
 							printf("[DBG²] Added "
-								"app: %s\n",
+							       "app: %s\n",
 								current_entry
 									->name);
 						if (verbose >= 2)
@@ -544,7 +543,9 @@ parse_config_file(FILE *fp)
 									->name,
 								current_entry
 									->icon,
-								current_entry->terminal ? " terminal: true," : "",
+								current_entry->terminal ?
+									" terminal: true," :
+									"",
 								current_entry
 									->exec);
 					} else {
@@ -582,26 +583,26 @@ parse_config_file(FILE *fp)
 					in_apps_section = 0;
 					if (verbose >= 2)
 						printf("[DBG²] Entering "
-							"[global] section\n");
+						       "[global] section\n");
 					if (verbose >= 2)
 						printf("[DBG²] Processing "
-							"global "
-							"configuration\n");
+						       "global "
+						       "configuration\n");
 				} else if (strncmp(line, "[apps]", 6) == 0) {
 					in_global_section = 0;
 					in_apps_section = 1;
 					if (verbose >= 2)
 						printf("[DBG²] Entering [apps] "
-							"section\n");
+						       "section\n");
 					if (verbose >= 2)
 						printf("[DBG²] Processing "
-							"applications\n");
+						       "applications\n");
 				} else {
 					in_global_section = 0;
 					in_apps_section = 0;
 					if (verbose >= 2)
 						printf("[DBG²] Unknown "
-							"section: %s\n",
+						       "section: %s\n",
 							line);
 				}
 			}
@@ -644,7 +645,8 @@ parse_config_file(FILE *fp)
 					hex++;
 				unsigned long parsed = strtoul(hex, NULL, 16);
 				if (strlen(hex) <= 6)
-					cfg.label_color = 0xFF000000 | (unsigned int)parsed;
+					cfg.label_color = 0xFF000000 |
+						(unsigned int)parsed;
 				else
 					cfg.label_color = (unsigned int)parsed;
 				if (verbose >= 2)
@@ -672,15 +674,15 @@ parse_config_file(FILE *fp)
 		if (strcmp(key, "name") == 0) {
 			// Save previous app entry if complete
 			if (current_entry) {
-				if (current_entry->name && current_entry->exec
-					&& current_entry->icon) {
+				if (current_entry->name &&
+					current_entry->exec &&
+					current_entry->icon) {
 					if (cfg.count >= capacity) {
 						capacity *= 2;
 						DesktopEntry **tmp = realloc(
 							cfg.apps,
-							capacity
-								* sizeof(
-									DesktopEntry
+							capacity *
+								sizeof(DesktopEntry
 										*));
 						if (!tmp) {
 							free_desktop_entry(
@@ -696,7 +698,7 @@ parse_config_file(FILE *fp)
 				} else {
 					if (verbose >= 2)
 						printf("[DBG²] Skipping app "
-							"with missing fields\n");
+						       "with missing fields\n");
 					free_desktop_entry(current_entry);
 				}
 			}
@@ -714,10 +716,12 @@ parse_config_file(FILE *fp)
 			if (verbose >= 2)
 				printf("[DBG²]   name: %s\n", value);
 		} else if (strcmp(key, "terminal") == 0) {
-			current_entry->terminal = (strcasecmp(value, "true") == 0);
+			current_entry->terminal =
+				(strcasecmp(value, "true") == 0);
 			if (verbose >= 2)
 				printf("[DBG²]   terminal: %s\n",
-					current_entry->terminal ? "true" : "false");
+					current_entry->terminal ? "true" :
+								  "false");
 		} else if (strcmp(key, "exec") == 0) {
 			free(current_entry->exec);
 			current_entry->exec = strdup(value);
@@ -728,15 +732,15 @@ parse_config_file(FILE *fp)
 			current_entry->icon = strdup(value);
 			if (verbose >= 2)
 				printf("[DBG²]   icon: %s (size: will be set "
-					"during render)\n",
+				       "during render)\n",
 					value);
 		}
 	}
 
 	// Don't forget the last entry
 	if (current_entry) {
-		if (current_entry->name && current_entry->exec
-			&& current_entry->icon) {
+		if (current_entry->name && current_entry->exec &&
+			current_entry->icon) {
 			if (cfg.count >= capacity) {
 				capacity *= 2;
 				DesktopEntry **tmp = realloc(cfg.apps,
@@ -754,7 +758,7 @@ parse_config_file(FILE *fp)
 		} else {
 			if (verbose >= 2)
 				printf("[DBG²] Skipping app with missing "
-					"fields\n");
+				       "fields\n");
 			free_desktop_entry(current_entry);
 		}
 	}
@@ -918,7 +922,7 @@ init_config(void)
 	// Try to write default config
 	if (write_default_config(apps, app_count)) {
 		printf("Created default config at ~/" CONFIG_DIR "/" CONFIG_NAME
-			"\n");
+		       "\n");
 		free_applications(apps, app_count);
 		return 0;
 	}
