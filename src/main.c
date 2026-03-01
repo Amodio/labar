@@ -517,9 +517,19 @@ registry_add(void *data, struct wl_registry *reg, uint32_t name,
 	}
 }
 
+static void
+registry_remove(void *data, struct wl_registry *reg, uint32_t name)
+{
+	// Handle removal of global objects if needed
+	// For now, we don't actively track removals since globals are
+	// considered relatively permanent for a single-bar application
+	if (verbose >= 2)
+		printf("[DBG²] Global object removed: name=%u\n", name);
+}
+
 static const struct wl_registry_listener registry_listener = {
 	.global = registry_add,
-	.global_remove = NULL, // Not handled — globals are considered permanent
+	.global_remove = registry_remove,
 };
 
 int

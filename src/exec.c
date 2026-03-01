@@ -1,6 +1,9 @@
 #define _GNU_SOURCE
 
 #include "exec.h"
+#include <errno.h>
+#include <fcntl.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -147,26 +150,13 @@ expand_field_codes(DesktopEntry *app, char ***argvp, int *argcp)
 	return 0;
 }
 
-void
-launch_app(DesktopEntry *app)
+static void
+launch_app_second_fork(DesktopEntry *app, char **argv, int argc)
 {
-	if (verbose)
-		printf("[DBG] -> launching app %s: %s\n", app->name, app->exec);
-
-	if (!app->exec)
-		return;
-
-	int argc;
-	char **argv = parse_exec(app->exec, &argc);
-
-	if (!argv)
-		return;
-
-	if (expand_field_codes(app, &argv, &argc) < 0)
-		return;
-
-	pid_t pid = fork();
-	if (pid == 0) {
+	errno = 0;
+	pid_t ret = fork();
+	if (ret == 0) {
+		// Second child: execute the actual application
 		if (app->terminal) {
 			const char *term = getenv("TERM");
 
@@ -197,17 +187,79 @@ launch_app(DesktopEntry *app)
 			if (verbose >= 2)
 				printf("\n");
 			term_argv[argc + 2] = NULL;
+
 			execvp(term, term_argv);
-			perror("execvp terminal");
-			_exit(1);
+			fprintf(stderr, "ERROR: execvp terminal: %s\n", strerror(errno));
+			_exit(EXIT_FAILURE);
 		} else {
 			if (verbose >= 2)
 				printf("[DBG²] -> launching app %s: %s\n", app->name, argv[0]);
+
 			execvp(argv[0], argv);
-			perror("execvp");
-			_exit(1);
+			fprintf(stderr, "ERROR: execvp: %s\n", strerror(errno));
+			_exit(EXIT_FAILURE);
 		}
+	} else if (ret < 0) {
+		fprintf(stderr, "ERROR: fork: %s\n", strerror(errno));
+		_exit(EXIT_FAILURE);
 	}
+}
+
+static void
+launch_app_first_fork(DesktopEntry *app, char **argv, int argc)
+{
+	errno = 0;
+	pid_t ret = fork();
+	if (ret == 0) {
+		// First child: create new session to detach from parent's process group
+		setsid();
+
+		// Restore signals to defaults (clear any inherited signal masks)
+		sigset_t mask;
+		sigemptyset(&mask);
+		sigprocmask(SIG_SETMASK, &mask, NULL);
+
+		// Close and redirect standard file descriptors to /dev/null
+		// to prevent holding onto the dock's terminal resources
+		int fd = open("/dev/null", O_RDWR);
+		if (fd >= 0) {
+			dup2(fd, STDIN_FILENO);
+			dup2(fd, STDOUT_FILENO);
+			dup2(fd, STDERR_FILENO);
+			if (fd > STDERR_FILENO)
+				close(fd);
+		}
+
+		// Fork again to create the actual child process
+		launch_app_second_fork(app, argv, argc);
+		_exit(EXIT_SUCCESS);
+	} else if (ret < 0) {
+		fprintf(stderr, "ERROR: fork: %s\n", strerror(errno));
+	} else {
+		// Parent: wait for first child to finish
+		waitpid(ret, NULL, 0);
+	}
+}
+
+void
+launch_app(DesktopEntry *app)
+{
+	if (verbose)
+		printf("[DBG] -> launching app %s: %s\n", app->name, app->exec);
+
+	if (!app->exec)
+		return;
+
+	int argc;
+	char **argv = parse_exec(app->exec, &argc);
+
+	if (!argv)
+		return;
+
+	if (expand_field_codes(app, &argv, &argc) < 0)
+		return;
+
+	launch_app_first_fork(app, argv, argc);
 
 	for (int i = 0; i < argc; i++)
 		free(argv[i]);
