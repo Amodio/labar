@@ -695,14 +695,8 @@ main(int argc, char *argv[])
 	zwlr_layer_surface_v1_set_size(layer_surface, bar_width, bar_height_actual);
 
 	// Reserve space so other surfaces don't overlap the dock
-	// For horizontal bars (TOP/BOTTOM), reserve height
-	// For vertical bars (LEFT/RIGHT), reserve width
-	int exclusive_zone_size = (app_config.position == POSITION_LEFT ||
-								  app_config.position == POSITION_RIGHT) ?
-		bar_width :
-		bar_height_actual;
 	zwlr_layer_surface_v1_set_exclusive_zone(layer_surface,
-		exclusive_zone_size);
+		app_config.exclusive_zone);
 
 	zwlr_layer_surface_v1_add_listener(layer_surface, &layer_listener, NULL);
 
