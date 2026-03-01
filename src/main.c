@@ -54,6 +54,51 @@ double current_pointer_y = 0.0;
 int last_hovered_icon = -1;
 
 // ---------------------------------------------------------------------------
+// get_icon_at_position
+//
+// Calculate which icon (if any) is at the given x coordinate, accounting for
+// icon spacing.
+//
+// Parameters:
+//   x – horizontal coordinate in pixels
+//
+// Returns the icon index (0 to count-1) or -1 if no icon is at that position
+// ---------------------------------------------------------------------------
+int
+get_icon_at_position(double x)
+{
+	if (x < 0)
+		return -1;
+
+	int icon_size = app_config.icon_size;
+	int spacing = app_config.icon_spacing;
+
+	// Each icon occupies (icon_size + spacing) pixels, except the last icon
+	// which doesn't have spacing after it
+	int pos = 0;
+	for (int i = 0; i < app_config.count; i++) {
+		int icon_end = pos + icon_size;
+		if (x >= pos && x < icon_end)
+			return i;
+		pos = icon_end + spacing;
+	}
+
+	return -1;
+}
+
+// Function to calculate x_offset for a given icon index, accounting for spacing
+int
+get_x_offset_for_icon(int icon_index)
+{
+	if (icon_index < 0 || icon_index >= app_config.count)
+		return 0;
+
+	int icon_size = app_config.icon_size;
+	int spacing = app_config.icon_spacing;
+	return icon_index * (icon_size + spacing);
+}
+
+// ---------------------------------------------------------------------------
 // create_shm_buffer
 //
 // Allocates a shared-memory buffer via a memfd and wraps it in a wl_buffer.
@@ -294,6 +339,7 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 		// Draw each loaded application icon horizontally
 		int x_offset = 0;
 		int icon_size = app_config.icon_size; // Use configured icon size
+		int icon_spacing = app_config.icon_spacing; // Use configured spacing
 		for (int i = 0; i < app_config.count; i++) {
 			if (x_offset + icon_size > surf_width)
 				break; // Don't draw beyond buffer width
@@ -343,7 +389,7 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 				}
 
 				free(text_overlay);
-				x_offset += icon_size;
+				x_offset += icon_size + icon_spacing;
 			}
 		}
 
@@ -474,8 +520,9 @@ main(int argc, char *argv[])
 	// Create a plain Wayland surface to host our layer surface
 	surface = wl_compositor_create_surface(compositor);
 
-	// Calculate bar dimensions based on number of icons
-	int required_width = app_config.count * app_config.icon_size;
+	// Calculate bar dimensions based on number of icons and spacing
+	int required_width = app_config.count * app_config.icon_size +
+		(app_config.count - 1) * app_config.icon_spacing;
 	int bar_height = app_config.icon_size;
 
 	if (verbose) {

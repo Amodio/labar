@@ -469,6 +469,7 @@ parse_config_file(FILE *fp)
 	cfg.label_size = 10;			   // 10 pt font by default
 	cfg.label_offset = 10;			   // Baseline 10 px above the bottom edge
 	cfg.exclusive_zone = 0;			   // No exclusive zone by default
+	cfg.icon_spacing = 0;			   // No spacing between icons by default
 	if (!cfg.apps)
 		return cfg;
 
@@ -625,6 +626,10 @@ parse_config_file(FILE *fp)
 				cfg.exclusive_zone = atoi(value);
 				if (verbose >= 2)
 					printf("[DBG²]   exclusive-zone: %d\n", cfg.exclusive_zone);
+			} else if (strcmp(key, "icon-spacing") == 0) {
+				cfg.icon_spacing = atoi(value);
+				if (verbose >= 2)
+					printf("[DBG²]   icon-spacing: %d\n", cfg.icon_spacing);
 			}
 			continue;
 		}
@@ -831,7 +836,10 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp, "#       maximized windows from overlapping)\n");
 	fprintf(fp, "#  -1: surface stretches to edges, ignoring other surfaces\n");
 	fprintf(fp, "#      (e.g., wallpaper, lock screen)\n");
-	fprintf(fp, "exclusive-zone=0\n\n");
+	fprintf(fp, "exclusive-zone=0\n");
+	fprintf(fp, "\n");
+	fprintf(fp, "# icon-spacing: spacing between icons in pixels\n");
+	fprintf(fp, "icon-spacing=0\n\n");
 
 	fprintf(fp, "[apps]\n");
 

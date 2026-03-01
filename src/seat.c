@@ -11,6 +11,8 @@
 extern void draw_icon(const char *path, uint32_t *data, int width, int height);
 extern void draw_text(uint32_t *data, int width, int height, const char *text,
 	int y_offset, unsigned int color);
+extern int get_icon_at_position(double x);
+extern int get_x_offset_for_icon(int icon_index);
 
 // ---------------------------------------------------------------------------
 // Pointer listeners — handle mouse events
@@ -39,7 +41,7 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 		int idx = last_hovered_icon;
 
 		if (idx < app_config.count && app_config.apps[idx]->icon) {
-			int x_offset = idx * icon_size;
+			int x_offset = get_x_offset_for_icon(idx);
 
 			uint32_t *tile = malloc(icon_size * icon_size * 4);
 			if (tile) {
@@ -72,13 +74,8 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 	current_pointer_x = wl_fixed_to_double(surface_x);
 	current_pointer_y = wl_fixed_to_double(surface_y);
 
-	// Determine which icon is under the pointer
-	int icon_index = -1;
-	if (app_config.icon_size > 0) {
-		icon_index = (int)(current_pointer_x / app_config.icon_size);
-		if (icon_index < 0 || icon_index >= app_config.count)
-			icon_index = -1;
-	}
+	// Determine which icon is under the pointer, accounting for spacing
+	int icon_index = get_icon_at_position(current_pointer_x);
 
 	// Only print when hovering icon changes to avoid spam
 	if (icon_index != last_hovered_icon) {
@@ -99,7 +96,7 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 				if (!app_config.apps[idx]->icon)
 					continue;
 
-				int x_offset = idx * icon_size;
+				int x_offset = get_x_offset_for_icon(idx);
 
 				// Re-render the SVG into a fresh tile
 				uint32_t *tile = malloc(icon_size * icon_size * 4);
@@ -170,16 +167,9 @@ pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 	const char *state_name =
 		(state == WL_POINTER_BUTTON_STATE_PRESSED) ? "PRESSED" : "RELEASED";
 
-	// Calculate which icon was clicked based on current pointer position
-	int icon_index = -1;
-	if (app_config.icon_size > 0) {
-		icon_index = (int)(current_pointer_x / app_config.icon_size);
-		// Clamp to valid range
-		if (icon_index < 0)
-			icon_index = -1;
-		if (icon_index >= app_config.count)
-			icon_index = -1;
-	}
+	// Calculate which icon was clicked based on current pointer position,
+	// accounting for spacing
+	int icon_index = get_icon_at_position(current_pointer_x);
 
 	if (icon_index >= 0 && icon_index < app_config.count) {
 		if (verbose) {

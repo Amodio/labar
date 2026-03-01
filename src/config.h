@@ -44,6 +44,7 @@ typedef struct {
 	// bottom that keeps ascenders and most descenders inside the tile).
 	int label_offset;
 	int exclusive_zone; // Exclusive zone for zwlr_layer_surface_v1 (default: 0)
+	int icon_spacing;	// Spacing between icons in pixels (default: 0)
 } Config;
 
 // List all valid applications from /usr/share/applications/*.desktop
