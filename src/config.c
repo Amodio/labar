@@ -329,8 +329,6 @@ find_best_icon(const char *icon_name)
 		free(theme_path);
 	}
 
-	closedir(base_dir);
-
 	if (verbose >= 3)
 		printf("[I/O] CLOSEDIR: /usr/share/icons (base theme dir)\n");
 	closedir(base_dir);
