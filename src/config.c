@@ -623,10 +623,18 @@ parse_config_file(FILE *fp)
 
 		// Handle global section
 		if (in_global_section) {
-			if (strcmp(key, "icon-size") == 0) {
+			if (strcmp(key, "exclusive-zone") == 0) {
+				cfg.exclusive_zone = atoi(value);
+				if (verbose >= 2)
+					printf("[DBG²]   exclusive-zone: %d\n", cfg.exclusive_zone);
+			} else if (strcmp(key, "icon-size") == 0) {
 				cfg.icon_size = atoi(value);
 				if (verbose >= 2)
 					printf("[DBG²]   icon-size: %d\n", cfg.icon_size);
+			} else if (strcmp(key, "icon-spacing") == 0) {
+				cfg.icon_spacing = atoi(value);
+				if (verbose >= 2)
+					printf("[DBG²]   icon-spacing: %d\n", cfg.icon_spacing);
 			} else if (strcmp(key, "label-mode") == 0) {
 				if (strcmp(value, "hover") == 0)
 					cfg.label_mode = LABEL_MODE_HOVER;
@@ -656,14 +664,6 @@ parse_config_file(FILE *fp)
 				cfg.label_size = atoi(value);
 				if (verbose >= 2)
 					printf("[DBG²]   label-size: %d\n", cfg.label_size);
-			} else if (strcmp(key, "exclusive-zone") == 0) {
-				cfg.exclusive_zone = atoi(value);
-				if (verbose >= 2)
-					printf("[DBG²]   exclusive-zone: %d\n", cfg.exclusive_zone);
-			} else if (strcmp(key, "icon-spacing") == 0) {
-				cfg.icon_spacing = atoi(value);
-				if (verbose >= 2)
-					printf("[DBG²]   icon-spacing: %d\n", cfg.icon_spacing);
 			} else if (strcmp(key, "position") == 0) {
 				if (strcmp(value, "top") == 0)
 					cfg.position = POSITION_TOP;
@@ -881,7 +881,17 @@ write_default_config(DesktopEntry **entries, int count)
 		"bar\n\n");
 
 	fprintf(fp, "[global]\n");
+	fprintf(fp, "# exclusive-zone: interaction with other surfaces\n");
+	fprintf(fp, "#    0: surface will be moved to avoid occluding\n");
+	fprintf(fp, "#       surfaces with positive exclusive zone\n");
+	fprintf(fp, "#   >0: surface reserves space (e.g., panel=10 prevents\n");
+	fprintf(fp, "#       maximized windows from overlapping)\n");
+	fprintf(fp, "#   -1: surface stretches to edges, ignoring other\n");
+	fprintf(fp, "#       surfaces (e.g., wallpaper, lock screen)\n");
+	fprintf(fp, "exclusive-zone=64\n");
 	fprintf(fp, "icon-size=64\n");
+	fprintf(fp, "# icon-spacing: spacing between icons in pixels\n");
+	fprintf(fp, "icon-spacing=0\n");
 	fprintf(fp, "# label-mode: always | hover | never\n");
 	fprintf(fp, "label-mode=hover\n");
 	fprintf(fp, "# label-color: hex color #RRGGBB or #RRGGBBAA\n");
@@ -890,41 +900,25 @@ write_default_config(DesktopEntry **entries, int count)
 		"# label_offset: pixels from the bottom edge of the icon "
 		"to the text baseline\n");
 	fprintf(fp,
-		"# 0 = bottom edge (descenders clipped), icon-size = top "
+		"#   0 = bottom edge (descenders clipped), icon-size = top "
 		"edge (text invisible)\n");
-	fprintf(fp, "# recommended range: 4-16\n");
+	fprintf(fp, "#   recommended range: 4-16\n");
 	fprintf(fp, "label-offset=10\n");
 	fprintf(fp, "# label-size: font size in points for the app-name label\n");
 	fprintf(fp, "label-size=10\n");
-	fprintf(fp, "\n");
-	fprintf(fp, "# exclusive-zone: interaction with other surfaces\n");
-	fprintf(fp, "#   0  (default): surface will be moved to avoid occluding\n");
-	fprintf(fp, "#                 surfaces with positive exclusive zone\n");
-	fprintf(fp, "#   >0: surface reserves space (e.g., panel=10 prevents\n");
-	fprintf(fp, "#       maximized windows from overlapping)\n");
-	fprintf(fp, "#  -1: surface stretches to edges, ignoring other surfaces\n");
-	fprintf(fp, "#      (e.g., wallpaper, lock screen)\n");
-	fprintf(fp, "exclusive-zone=0\n");
-	fprintf(fp, "\n");
-	fprintf(fp, "# icon-spacing: spacing between icons in pixels\n");
-	fprintf(fp, "icon-spacing=0\n");
-	fprintf(fp, "\n");
 	fprintf(fp, "# position: where to place the bar on screen\n");
 	fprintf(fp, "#   bottom (default): horizontal bar at the bottom\n");
 	fprintf(fp, "#   top:              horizontal bar at the top\n");
 	fprintf(fp, "#   left:             vertical bar on the left\n");
 	fprintf(fp, "#   right:            vertical bar on the right\n");
 	fprintf(fp, "position=bottom\n");
-	fprintf(fp, "\n");
 	fprintf(fp, "# layer: layer-shell layer for the surface\n");
-	fprintf(fp,
-		"#   background:               beneath everything (for wallpapers)\n");
+	fprintf(fp, "#   background:       beneath everything (for wallpapers)\n");
 	fprintf(fp, "#   bottom:           below normal windows (for docks)\n");
 	fprintf(fp, "#   top (default):    above normal windows\n");
 	fprintf(fp, "#   overlay:          on top of everything\n");
-	fprintf(fp, "layer=top\n\n");
-
-	fprintf(fp, "[apps]\n");
+	fprintf(fp, "layer=top\n");
+	fprintf(fp, "\n[apps]\n");
 
 	int written = 0;
 
