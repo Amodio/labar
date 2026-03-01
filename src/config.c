@@ -44,9 +44,15 @@ trim_string(char *str)
 static DesktopEntry *
 parse_desktop_file(const char *filepath)
 {
+	if (verbose >= 3)
+		printf("[I/O] FOPEN (read): %s\n", filepath);
+
 	FILE *fp = fopen(filepath, "r");
-	if (!fp)
+	if (!fp) {
+		if (verbose >= 3)
+			printf("[I/O] FOPEN FAILED: %s\n", filepath);
 		return NULL;
+	}
 
 	if (verbose >= 2)
 		printf("[DBG²] Parsing .desktop file: %s\n", filepath);
@@ -123,6 +129,9 @@ parse_desktop_file(const char *filepath)
 
 	fclose(fp);
 
+	if (verbose >= 3)
+		printf("[I/O] FCLOSE: %s\n", filepath);
+
 	// Valid entries need at least a Name and Exec
 	if (!entry->name || !entry->exec || no_display) {
 		if (entry->name)
@@ -159,6 +168,13 @@ find_app_by_name(DesktopEntry **entries, int count, const char *name)
 	}
 	return NULL;
 }
+
+// Icon surface cache entry
+typedef struct {
+	char *icon_path;
+	int size;		  // Size in pixels
+	uint32_t *pixels; // Decoded pixel data
+} IconSurfaceCache;
 
 // Icon candidate for sorting and selection
 typedef struct {
@@ -264,15 +280,19 @@ find_best_icon(const char *icon_name)
 							 // priority)
 					candidate_count++;
 				} else {
+					if (verbose >= 3)
+						printf("[I/O] ACCESS CHECK (stat): %s - NOT FOUND\n",
+							svg_path);
 					free(svg_path);
 				}
-			}
-
-			// Try PNG
+			} // Try PNG
 			char *png_path = make_icon_path(theme_path, size_entry->d_name,
 				icon_name, "png");
 			if (png_path) {
 				if (access(png_path, F_OK) == 0) {
+					if (verbose >= 3)
+						printf("[I/O] ACCESS CHECK (stat): %s - EXISTS\n",
+							png_path);
 					// Extract size from directory name
 					// (e.g., "256x256" -> 256)
 					int size = 0;
@@ -282,7 +302,6 @@ find_best_icon(const char *icon_name)
 						printf("[DBG²]   Found PNG "
 							   "(%dpx): %s\n",
 							size, png_path);
-
 					if (candidate_count >= capacity) {
 						capacity *= 2;
 						IconCandidate *tmp = realloc(candidates,
@@ -298,6 +317,9 @@ find_best_icon(const char *icon_name)
 					candidates[candidate_count].size = size;
 					candidate_count++;
 				} else {
+					if (verbose >= 3)
+						printf("[I/O] ACCESS CHECK (stat): %s - NOT FOUND\n",
+							png_path);
 					free(png_path);
 				}
 			}
@@ -307,6 +329,10 @@ find_best_icon(const char *icon_name)
 		free(theme_path);
 	}
 
+	closedir(base_dir);
+
+	if (verbose >= 3)
+		printf("[I/O] CLOSEDIR: /usr/share/icons (base theme dir)\n");
 	closedir(base_dir);
 
 	if (candidate_count == 0) {
@@ -358,8 +384,12 @@ DesktopEntry **
 list_all_applications(int *count_out)
 {
 	const char *app_dir = APPS_DIR;
+	if (verbose >= 3)
+		printf("[I/O] OPENDIR: %s\n", app_dir);
 	DIR *dir = opendir(app_dir);
 	if (!dir) {
+		if (verbose >= 3)
+			printf("[I/O] OPENDIR FAILED: %s\n", app_dir);
 		perror("opendir");
 		*count_out = 0;
 		return NULL;
@@ -407,6 +437,8 @@ list_all_applications(int *count_out)
 		entries[count++] = parsed;
 	}
 
+	if (verbose >= 3)
+		printf("[I/O] CLOSEDIR: %s\n", app_dir);
 	closedir(dir);
 	*count_out = count;
 	return entries;
@@ -453,6 +485,8 @@ config_file_exists(void)
 	snprintf(config_path, sizeof(config_path), "%s/" CONFIG_DIR "/" CONFIG_NAME,
 		home);
 
+	if (verbose >= 3)
+		printf("[I/O] ACCESS CHECK (stat): %s\n", config_path);
 	return access(config_path, F_OK) == 0;
 }
 
@@ -753,11 +787,17 @@ load_config(void)
 	snprintf(config_path, sizeof(config_path), "%s/" CONFIG_DIR "/" CONFIG_NAME,
 		home);
 
+	if (verbose >= 3)
+		printf("[I/O] FOPEN (read): %s\n", config_path);
 	FILE *fp = fopen(config_path, "r");
 	if (!fp) {
+		if (verbose >= 3)
+			printf("[I/O] FOPEN FAILED (will create): %s\n", config_path);
 		// File doesn't exist, create it
 		if (init_config() == 0) {
 			// Successfully created, reload
+			if (verbose >= 3)
+				printf("[I/O] FOPEN (read, after create): %s\n", config_path);
 			fp = fopen(config_path, "r");
 			if (!fp)
 				return cfg;
@@ -769,6 +809,8 @@ load_config(void)
 
 	// Parse the config file
 	cfg = parse_config_file(fp);
+	if (verbose >= 3)
+		printf("[I/O] FCLOSE: %s\n", config_path);
 	fclose(fp);
 	return cfg;
 }
@@ -794,6 +836,8 @@ write_default_config(DesktopEntry **entries, int count)
 	// Create ~/.config directory if it doesn't exist
 	char config_dir[512];
 	snprintf(config_dir, sizeof(config_dir), "%s/" CONFIG_DIR, home);
+	if (verbose >= 3)
+		printf("[I/O] MKDIR: %s\n", config_dir);
 	mkdir(config_dir, 0755);
 
 	// Write config file
@@ -801,6 +845,8 @@ write_default_config(DesktopEntry **entries, int count)
 	snprintf(config_path, sizeof(config_path), "%s/" CONFIG_DIR "/" CONFIG_NAME,
 		home);
 
+	if (verbose >= 3)
+		printf("[I/O] FOPEN (write): %s\n", config_path);
 	FILE *fp = fopen(config_path, "w");
 	if (!fp) {
 		perror("fopen");
@@ -865,6 +911,8 @@ write_default_config(DesktopEntry **entries, int count)
 		written++;
 	}
 
+	if (verbose >= 3)
+		printf("[I/O] FCLOSE: %s\n", config_path);
 	fclose(fp);
 
 	// Return success only if at least one app was written

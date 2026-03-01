@@ -24,6 +24,7 @@ executable(
   'src/config.c',
   'src/exec.c',
   'src/seat.c',
+  'src/cache.c',
   dependencies: [
     wayland_client,
     wl_protocols,

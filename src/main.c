@@ -12,6 +12,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <wayland-client.h>
+#include "cache.h"
 #include "config.h"
 #include "exec.h"
 #include "seat.h"
@@ -220,9 +221,14 @@ draw_text(uint32_t *data, int width, int height, const char *text, int y_offset,
 void
 draw_svg(const char *path, uint32_t *data, int width, int height)
 {
+	if (verbose >= 3)
+		printf("[I/O] FOPEN (read SVG): %s\n", path);
+
 	GError *error = NULL;
 	RsvgHandle *handle = rsvg_handle_new_from_file(path, &error);
 	if (!handle) {
+		if (verbose >= 3)
+			printf("[I/O] FOPEN FAILED: %s\n", path);
 		fprintf(stderr, "Failed to load SVG '%s': %s\n", path,
 			error ? error->message : "unknown error");
 		if (error)
@@ -264,8 +270,13 @@ draw_svg(const char *path, uint32_t *data, int width, int height)
 void
 draw_png(const char *path, uint32_t *data, int width, int height)
 {
+	if (verbose >= 3)
+		printf("[I/O] FOPEN (read PNG): %s\n", path);
+
 	cairo_surface_t *img = cairo_image_surface_create_from_png(path);
 	if (cairo_surface_status(img) != CAIRO_STATUS_SUCCESS) {
+		if (verbose >= 3)
+			printf("[I/O] FOPEN FAILED: %s\n", path);
 		fprintf(stderr, "Failed to load PNG '%s'\n", path);
 		cairo_surface_destroy(img);
 		return;
@@ -297,6 +308,16 @@ draw_png(const char *path, uint32_t *data, int width, int height)
 void
 draw_icon(const char *path, uint32_t *data, int width, int height)
 {
+	// Check cache first
+	uint32_t *cached = cache_lookup(path, width);
+	if (cached) {
+		if (verbose >= 2)
+			printf("[DBG²] Using cached surface for %s (%dx%d)\n", path, width,
+				height);
+		memcpy(data, cached, width * height * 4);
+		return;
+	}
+
 	const char *ext = strrchr(path, '.');
 	if (!ext) {
 		fprintf(stderr, "Icon has no extension: %s\n", path);
@@ -310,6 +331,9 @@ draw_icon(const char *path, uint32_t *data, int width, int height)
 	} else {
 		fprintf(stderr, "Unsupported icon format: %s\n", path);
 	}
+
+	// Cache the decoded surface for future use
+	cache_store(path, width, data);
 }
 
 // ---------------------------------------------------------------------------
@@ -470,10 +494,14 @@ main(int argc, char *argv[])
 		}
 	}
 
+	// Initialize the surface cache
+	cache_init();
+
 	// Load config (will create it if it doesn't exist)
 	app_config = load_config();
 	if (!app_config.apps || app_config.count == 0) {
 		fprintf(stderr, "Failed to load configuration\n");
+		cache_free();
 		return 1;
 	}
 
@@ -554,6 +582,7 @@ main(int argc, char *argv[])
 	while (wl_display_dispatch(display) != -1) {
 	}
 
+	cache_free();
 	free_config(&app_config);
 	wl_display_disconnect(display);
 	return 0;

@@ -137,8 +137,8 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 	}
 
 	// Only print detailed motion at verbose level 2 to avoid spam
-	if (verbose >= 3) {
-		printf("[DBG³] Pointer motion at (%.2f, %.2f)\n", current_pointer_x,
+	if (verbose >= 4) {
+		printf("[DBG⁴] Pointer motion at (%.2f, %.2f)\n", current_pointer_x,
 			current_pointer_y);
 	}
 }
