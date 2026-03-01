@@ -352,7 +352,7 @@ find_best_icon(const char *icon_name)
 		printf("[DBG²] Available icons for '%s' (best to worst):\n", icon_name);
 		for (int i = 0; i < candidate_count; i++) {
 			const char *type = (candidates[i].size == 999) ? "SVG" : "PNG";
-			printf("[DBG²]   [%d] %s (%s, %dpx)\n", i, candidates[i].path, type,
+			printf("[DBG²]   #%d %s (%s, %dpx)\n", i, candidates[i].path, type,
 				candidates[i].size);
 		}
 	}
@@ -784,7 +784,7 @@ parse_config_file(FILE *fp)
 	if (verbose >= 2) {
 		printf("[DBG²] Parsing complete - icon_size: %d\n", cfg.icon_size);
 		for (int i = 0; i < cfg.count; i++) {
-			printf("[DBG²]   App[%d]: %s -> %s\n", i, cfg.apps[i]->name,
+			printf("[DBG²]   App #%d: %s -> %s\n", i, cfg.apps[i]->name,
 				cfg.apps[i]->exec);
 		}
 	}
@@ -977,7 +977,7 @@ init_config(void)
 	printf("Available applications (%d found):\n\n", app_count);
 
 	for (int i = 0; i < app_count; i++) {
-		printf("[%d] %s\n", i + 1, apps[i]->name);
+		printf("#%d %s\n", i + 1, apps[i]->name);
 		if (apps[i]->icon)
 			printf("    Icon: %s\n", apps[i]->icon);
 		printf("    Exec: %s\n\n", apps[i]->exec);

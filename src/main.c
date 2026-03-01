@@ -512,8 +512,8 @@ registry_add(void *data, struct wl_registry *reg, uint32_t name,
 	} else if (strcmp(interface, wl_seat_interface.name) == 0) {
 		seat = wl_registry_bind(reg, name, &wl_seat_interface, 1);
 		wl_seat_add_listener(seat, get_seat_listener(), NULL);
-		if (verbose)
-			printf("[DBG] Bound to wl_seat\n");
+		if (verbose >= 2)
+			printf("[DBG²] Bound to wl_seat\n");
 	}
 }
 
@@ -570,7 +570,7 @@ main(int argc, char *argv[])
 		printf("[DBG] Loaded configuration with %d application(s):\n",
 			app_config.count);
 		for (int i = 0; i < app_config.count; i++) {
-			printf("[DBG]   [%d] %s\n", i, app_config.apps[i]->name);
+			printf("[DBG]   #%d %s\n", i, app_config.apps[i]->name);
 			if (app_config.apps[i]->icon)
 				printf("[DBG]       icon: %s\n", app_config.apps[i]->icon);
 			if (app_config.apps[i]->terminal)
@@ -587,8 +587,8 @@ main(int argc, char *argv[])
 		return 1;
 	}
 
-	if (verbose)
-		printf("[DBG] Connected to Wayland display\n");
+	if (verbose >= 2)
+		printf("[DBG²] Connected to Wayland display\n");
 
 	// Discover and bind compositor globals (wl_compositor, wl_shm,
 	// layer-shell)

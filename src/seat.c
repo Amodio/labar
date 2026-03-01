@@ -21,8 +21,8 @@ void
 pointer_enter(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 	struct wl_surface *surface, wl_fixed_t surface_x, wl_fixed_t surface_y)
 {
-	if (verbose)
-		printf("[DBG] Pointer entered surface at (%.2f, %.2f)\n",
+	if (verbose >= 2)
+		printf("[DBG²] Pointer entered surface at (%.2f, %.2f)\n",
 			wl_fixed_to_double(surface_x), wl_fixed_to_double(surface_y));
 }
 
@@ -30,8 +30,8 @@ void
 pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 	struct wl_surface *surface)
 {
-	if (verbose)
-		printf("[DBG] Pointer left surface\n");
+	if (verbose >= 2)
+		printf("[DBG²] Pointer left surface\n");
 
 	// Treat leaving the surface as moving to no icon: clear the hover label
 	// on whichever icon was last highlighted and reset the tracking index.
@@ -156,7 +156,7 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 
 		last_hovered_icon = icon_index;
 		if (icon_index >= 0 && verbose >= 1) {
-			printf("[DBG] Hovering over icon/app [%d] '%s'\n", icon_index,
+			printf("[DBG] Hovering over icon/app #%d '%s'\n", icon_index,
 				app_config.apps[icon_index]->name);
 		}
 	}
@@ -323,8 +323,8 @@ seat_capabilities(void *data, struct wl_seat *seat, uint32_t capabilities)
 	if ((capabilities & WL_SEAT_CAPABILITY_POINTER) && !pointer) {
 		pointer = wl_seat_get_pointer(seat);
 		wl_pointer_add_listener(pointer, &pointer_listener, NULL);
-		if (verbose)
-			printf("[DBG] Pointer capability detected and bound\n");
+		if (verbose >= 2)
+			printf("[DBG²] Pointer capability detected and bound\n");
 	}
 }
 
