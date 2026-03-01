@@ -300,12 +300,12 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 				break; // Don't draw beyond buffer width
 
 			if (app_config.apps[i]->icon) {
-				if (verbose)
-					printf("[DBG] Drawing icon %d at x=%d: "
-						"%s (size=%dx%d)\n",
+				if (verbose >= 2) {
+					printf("[DBG²] Drawing icon %d at x=%d: %s (size=%dx%d)\n",
 						i, x_offset,
 						app_config.apps[i]->icon,
 						icon_size, icon_size);
+				}
 
 				// Create a temporary buffer for this icon tile
 				uint32_t *tile_data =
