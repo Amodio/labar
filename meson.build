@@ -23,6 +23,7 @@ executable(
   'src/main.c',
   'src/config.c',
   'src/exec.c',
+  'src/seat.c',
   dependencies: [
     wayland_client,
     wl_protocols,
