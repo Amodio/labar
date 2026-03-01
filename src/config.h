@@ -43,6 +43,7 @@ typedef struct {
 	// Recommended range: 4–16 px. Default is 10 (a small raise from the
 	// bottom that keeps ascenders and most descenders inside the tile).
 	int label_offset;
+	int exclusive_zone; // Exclusive zone for zwlr_layer_surface_v1 (default: 0)
 } Config;
 
 // List all valid applications from /usr/share/applications/*.desktop

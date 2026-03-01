@@ -468,6 +468,7 @@ parse_config_file(FILE *fp)
 	cfg.label_color = 0xFFFFFFFF;	   // Opaque white by default
 	cfg.label_size = 10;			   // 10 pt font by default
 	cfg.label_offset = 10;			   // Baseline 10 px above the bottom edge
+	cfg.exclusive_zone = 0;			   // No exclusive zone by default
 	if (!cfg.apps)
 		return cfg;
 
@@ -620,6 +621,10 @@ parse_config_file(FILE *fp)
 				cfg.label_size = atoi(value);
 				if (verbose >= 2)
 					printf("[DBG²]   label_size: %d\n", cfg.label_size);
+			} else if (strcmp(key, "exclusive-zone") == 0) {
+				cfg.exclusive_zone = atoi(value);
+				if (verbose >= 2)
+					printf("[DBG²]   exclusive-zone: %d\n", cfg.exclusive_zone);
 			}
 			continue;
 		}
@@ -817,7 +822,16 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp, "# recommended range: 4-16\n");
 	fprintf(fp, "label_offset=10\n");
 	fprintf(fp, "# label_size: font size in points for the app-name label\n");
-	fprintf(fp, "label_size=10\n\n");
+	fprintf(fp, "label_size=10\n");
+	fprintf(fp, "\n");
+	fprintf(fp, "# exclusive-zone: interaction with other surfaces\n");
+	fprintf(fp, "#   0  (default): surface will be moved to avoid occluding\n");
+	fprintf(fp, "#                 surfaces with positive exclusive zone\n");
+	fprintf(fp, "#   >0: surface reserves space (e.g., panel=10 prevents\n");
+	fprintf(fp, "#       maximized windows from overlapping)\n");
+	fprintf(fp, "#  -1: surface stretches to edges, ignoring other surfaces\n");
+	fprintf(fp, "#      (e.g., wallpaper, lock screen)\n");
+	fprintf(fp, "exclusive-zone=0\n\n");
 
 	fprintf(fp, "[apps]\n");
 
