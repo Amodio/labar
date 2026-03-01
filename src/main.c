@@ -362,7 +362,7 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 
 		// Draw each loaded application icon horizontally
 		int x_offset = 0;
-		int icon_size = app_config.icon_size; // Use configured icon size
+		int icon_size = app_config.icon_size;		// Use configured icon size
 		int icon_spacing = app_config.icon_spacing; // Use configured spacing
 		for (int i = 0; i < app_config.count; i++) {
 			if (x_offset + icon_size > surf_width)
@@ -500,7 +500,9 @@ main(int argc, char *argv[])
 	// Load config (will create it if it doesn't exist)
 	app_config = load_config();
 	if (!app_config.apps || app_config.count == 0) {
-		fprintf(stderr, "Failed to load configuration\n");
+		fprintf(stderr,
+			"Failed to load configuration from ~/" CONFIG_DIR "/" CONFIG_NAME
+			"\n");
 		cache_free();
 		return 1;
 	}
