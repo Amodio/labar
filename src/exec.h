@@ -3,6 +3,8 @@
 
 #include "config.h"
 
+#define DEFAULT_TERMINAL "foot"
+
 /*
  * Parse a .desktop Exec string into argv array.
  * - Handles quoting and escaping.

@@ -58,6 +58,7 @@ parse_desktop_file(const char *filepath)
 	}
 
 	char line[512];
+	int no_display = 0;
 	int in_desktop_section = 0;
 
 	while (fgets(line, sizeof(line), fp)) {
@@ -92,32 +93,38 @@ parse_desktop_file(const char *filepath)
 		char *key = trim_string(line);
 		char *value = trim_string(eq + 1);
 
-		if (strcmp(key, "Name") == 0) {
+		if (strcasecmp(key, "Name") == 0) {
 			free(entry->name);
 			entry->name = strdup(value);
 			if (verbose >= 2)
 				printf("[DBG²]   Name: %s\n", value);
-		} else if (strcmp(key, "Exec") == 0) {
+		} else if (strcasecmp(key, "Exec") == 0) {
 			free(entry->exec);
 			entry->exec = strdup(value);
 			if (verbose >= 2)
 				printf("[DBG²]   Exec: %s\n", value);
-		} else if (strcmp(key, "Icon") == 0) {
+		} else if (strcasecmp(key, "Icon") == 0) {
 			free(entry->icon);
 			entry->icon = strdup(value);
 			if (verbose >= 2)
 				printf("[DBG²]   Icon: %s\n", value);
-		} else if (strcmp(key, "NoDisplay") == 0) {
-			entry->no_display = (strcmp(value, "true") == 0);
+		} else if (strcasecmp(key, "NoDisplay") == 0) {
+			no_display = (strcasecmp(value, "true") == 0);
 			if (verbose >= 2)
 				printf("[DBG²]   NoDisplay: %s\n", value);
+		} else if (strcasecmp(key, "Terminal") == 0) {
+			entry->terminal = (strcasecmp(value, "true") == 0);
+			if (verbose >= 2) {
+				printf("[DBG²]   terminal: %s\n",
+					entry->terminal ? "true" : "false");
+			}
 		}
 	}
 
 	fclose(fp);
 
 	// Valid entries need at least a Name and Exec
-	if (!entry->name || !entry->exec) {
+	if (!entry->name || !entry->exec || no_display) {
 		if (entry->name)
 			free(entry->name);
 		if (entry->exec)
@@ -399,12 +406,6 @@ list_all_applications(int *count_out)
 		if (!parsed)
 			continue;
 
-		// Skip entries marked as not to be displayed
-		if (parsed->no_display) {
-			free_desktop_entry(parsed);
-			continue;
-		}
-
 		// Grow array if needed
 		if (count >= capacity) {
 			capacity *= 2;
@@ -538,22 +539,18 @@ parse_config_file(FILE *fp)
 								current_entry
 									->name);
 						if (verbose >= 2)
-							printf("[DBG²]   name: "
-								"%s, icon: %s, "
-								"exec: %s\n",
+							printf("[DBG²]   name: %s, icon: %s,%s exec: %s\n",
 								current_entry
 									->name,
 								current_entry
 									->icon,
+								current_entry->terminal ? " terminal: true," : "",
 								current_entry
 									->exec);
 					} else {
-						if (verbose >= 2)
-							printf("[DBG²] "
-								"Skipping app "
-								"with missing "
-								"fields\n");
-						if (verbose >= 2) {
+						if (verbose)
+							printf("[DBG] Skipping app with missing fields\n");
+						if (verbose) {
 							const char *n =
 								current_entry
 									->name ?
@@ -572,7 +569,7 @@ parse_config_file(FILE *fp)
 								current_entry
 									->exec :
 								"(missing)";
-							printf("[DBG²]   name: %s, icon: %s, exec: %s\n",
+							printf("[DBG]   name: %s, icon: %s, exec: %s\n",
 								n, ic, ex);
 						}
 						free_desktop_entry(
@@ -716,6 +713,11 @@ parse_config_file(FILE *fp)
 			current_entry->name = strdup(value);
 			if (verbose >= 2)
 				printf("[DBG²]   name: %s\n", value);
+		} else if (strcmp(key, "terminal") == 0) {
+			current_entry->terminal = (strcasecmp(value, "true") == 0);
+			if (verbose >= 2)
+				printf("[DBG²]   terminal: %s\n",
+					current_entry->terminal ? "true" : "false");
 		} else if (strcmp(key, "exec") == 0) {
 			free(current_entry->exec);
 			current_entry->exec = strdup(value);
@@ -823,6 +825,7 @@ write_default_config(DesktopEntry **entries, int count)
 		"keepassxc",
 		"thunderbird",
 		"firefox",
+		"htop",
 		"foot",
 	};
 	int default_count = sizeof(default_apps) / sizeof(default_apps[0]);
@@ -883,6 +886,8 @@ write_default_config(DesktopEntry **entries, int count)
 
 		fprintf(fp, "name=%s\n", app->name);
 		fprintf(fp, "icon=%s\n", icon_path);
+		if (app->terminal)
+			fprintf(fp, "terminal=true\n");
 		fprintf(fp, "exec=%s\n\n", app->exec);
 
 		free(icon_path);

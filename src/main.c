@@ -773,6 +773,8 @@ main(int argc, char *argv[])
 			if (app_config.apps[i]->icon)
 				printf("[DBG]       icon: %s\n",
 					app_config.apps[i]->icon);
+			if (app_config.apps[i]->terminal)
+				printf("[DBG]       terminal: true\n");
 			printf("[DBG]       exec: %s\n",
 				app_config.apps[i]->exec);
 		}

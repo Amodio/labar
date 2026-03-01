@@ -9,7 +9,7 @@ typedef struct {
 	char *name;
 	char *exec;
 	char *icon;
-	int no_display;
+	int terminal;
 } DesktopEntry;
 
 // Controls when the application name label is drawn over its icon

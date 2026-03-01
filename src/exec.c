@@ -154,14 +154,47 @@ launch_app(DesktopEntry *app)
 	if (expand_field_codes(app, &argv, &argc) < 0)
 		return;
 
-	if (verbose >= 2)
-		printf("[DBG²] -> launching app %s: %s\n", app->name, argv[0]);
-
 	pid_t pid = fork();
 	if (pid == 0) {
-		execvp(argv[0], argv);
-		perror("execvp");
-		_exit(1);
+		if (app->terminal) {
+			const char *term = getenv("TERM");
+
+			if (!term) {
+				term = DEFAULT_TERMINAL;
+				if (verbose)
+					printf("[DBG] Cannot get the terminal, using the default one");
+			}
+
+			/*
+			 * Build:
+			 * terminal -e program arg1 arg2 ...
+			 */
+			char **term_argv = malloc(sizeof(char *) * (argc + 3));
+
+			term_argv[0] = (char *)term;
+			term_argv[1] = "-e";
+
+			if (verbose >= 2)
+				printf("[DBG²] -> launching app %s: %s %s",
+					app->name, term_argv[0], term_argv[1]);
+			for (int i = 0; i < argc; i++) {
+				if (verbose >= 2)
+					printf(" %s", argv[i]);
+				term_argv[i + 2] = argv[i];
+			}
+			if (verbose >= 2)
+				printf("\n");
+			term_argv[argc + 2] = NULL;
+			execvp(term, term_argv);
+			perror("execvp terminal");
+			_exit(1);
+		} else {
+			if (verbose >= 2)
+				printf("[DBG²] -> launching app %s: %s\n", app->name, argv[0]);
+			execvp(argv[0], argv);
+			perror("execvp");
+			_exit(1);
+		}
 	}
 
 	for (int i = 0; i < argc; i++)
