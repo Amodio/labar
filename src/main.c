@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <wayland-client.h>
 #include "config.h"
+#include "exec.h"
 #include "wlr-layer-shell-unstable-v1-protocol.h"
 
 // Global verbose flag for debug output (0=none, 1=normal, 2=extra)
@@ -214,6 +215,58 @@ draw_svg(const char *path, uint32_t *data, int width, int height)
 	g_object_unref(handle);
 }
 
+static void
+draw_png(const char *path, uint32_t *data, int width, int height)
+{
+	cairo_surface_t *img = cairo_image_surface_create_from_png(path);
+	if (cairo_surface_status(img) != CAIRO_STATUS_SUCCESS) {
+		fprintf(stderr, "Failed to load PNG '%s'\n", path);
+		cairo_surface_destroy(img);
+		return;
+	}
+
+	int img_w = cairo_image_surface_get_width(img);
+	int img_h = cairo_image_surface_get_height(img);
+
+	cairo_surface_t *cs =
+		cairo_image_surface_create_for_data((unsigned char *)data,
+			CAIRO_FORMAT_ARGB32, width, height, width * 4);
+	cairo_t *cr = cairo_create(cs);
+
+	// Clear target
+	cairo_set_source_rgba(cr, 0, 0, 0, 0);
+	cairo_paint(cr);
+
+	// Scale to fit
+	cairo_scale(cr, (double)width / img_w,
+		(double)height / img_h);
+
+	cairo_set_source_surface(cr, img, 0, 0);
+	cairo_paint(cr);
+
+	cairo_destroy(cr);
+	cairo_surface_destroy(cs);
+	cairo_surface_destroy(img);
+}
+
+static void
+draw_icon(const char *path, uint32_t *data, int width, int height)
+{
+	const char *ext = strrchr(path, '.');
+	if (!ext) {
+		fprintf(stderr, "Icon has no extension: %s\n", path);
+		return;
+	}
+
+	if (strcasecmp(ext, ".svg") == 0) {
+		draw_svg(path, data, width, height);
+	} else if (strcasecmp(ext, ".png") == 0) {
+		draw_png(path, data, width, height);
+	} else {
+		fprintf(stderr, "Unsupported icon format: %s\n", path);
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Layer-surface event listeners
 // ---------------------------------------------------------------------------
@@ -260,7 +313,7 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 				memset(tile_data, 0, icon_size * icon_size * 4);
 
 				// Draw the SVG onto the tile buffer
-				draw_svg(app_config.apps[i]->icon, tile_data,
+				draw_icon(app_config.apps[i]->icon, tile_data,
 					icon_size, icon_size);
 
 				// Draw the app name as a text overlay on the
@@ -356,7 +409,7 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 			uint32_t *tile = malloc(icon_size * icon_size * 4);
 			if (tile) {
 				memset(tile, 0, icon_size * icon_size * 4);
-				draw_svg(app_config.apps[idx]->icon, tile,
+				draw_icon(app_config.apps[idx]->icon, tile,
 					icon_size, icon_size);
 				// No label — pointer has left the surface
 
@@ -421,7 +474,7 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 				if (!tile)
 					continue;
 				memset(tile, 0, icon_size * icon_size * 4);
-				draw_svg(app_config.apps[idx]->icon, tile,
+				draw_icon(app_config.apps[idx]->icon, tile,
 					icon_size, icon_size);
 
 				// Add label only for the newly hovered icon
@@ -457,8 +510,8 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 	}
 
 	// Only print detailed motion at verbose level 2 to avoid spam
-	if (verbose >= 2) {
-		printf("[DBG²] Pointer motion at (%.2f, %.2f)\n",
+	if (verbose >= 3) {
+		printf("[DBG³] Pointer motion at (%.2f, %.2f)\n",
 			current_pointer_x, current_pointer_y);
 	}
 }
@@ -500,9 +553,14 @@ pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 	}
 
 	if (icon_index >= 0 && icon_index < app_config.count) {
-		printf("[DBG] Mouse button %s (%s) on icon/app #%d '%s'\n",
-			button_name, state_name, icon_index,
-			app_config.apps[icon_index]->name);
+		if (verbose) {
+			printf("[DBG] Mouse button %s (%s) on icon/app #%d '%s'\n",
+				button_name, state_name, icon_index,
+				app_config.apps[icon_index]->name);
+		}
+		if (button == BTN_LEFT && state == WL_POINTER_BUTTON_STATE_PRESSED) {
+			launch_app(app_config.apps[icon_index]);
+		}
 	} else {
 		if (verbose) {
 			printf("[DBG] Mouse button %s (%s) at (%.2f, %.2f) - no app hit\n",
@@ -534,9 +592,11 @@ pointer_axis(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 	}
 
 	if (icon_index >= 0) {
-		printf("[DBG] Scroll %s on icon/app #%d '%s' (value=%.2f)\n",
-			direction, icon_index,
-			app_config.apps[icon_index]->name, scroll_value);
+		if (verbose) {
+			printf("[DBG] Scroll %s on icon/app #%d '%s' (value=%.2f)\n",
+				direction, icon_index,
+				app_config.apps[icon_index]->name, scroll_value);
+		}
 	} else {
 		if (verbose) {
 			printf("[DBG] Scroll %s at (%.2f, %.2f) (value=%.2f)\n",

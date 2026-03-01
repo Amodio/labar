@@ -22,6 +22,7 @@ executable(
   'labar',
   'src/main.c',
   'src/config.c',
+  'src/exec.c',
   dependencies: [
     wayland_client,
     wl_protocols,

@@ -818,13 +818,14 @@ write_default_config(DesktopEntry **entries, int count)
 	if (!home)
 		return 0;
 
-	// Find firefox and foot in the app list
-	DesktopEntry *firefox = find_app_by_name(entries, count, "firefox");
-	DesktopEntry *foot = find_app_by_name(entries, count, "foot");
-
-	// If neither are found, do nothing
-	if (!firefox && !foot)
-		return 0;
+	// List of default applications to include
+	const char *default_apps[] = {
+		"keepassxc",
+		"thunderbird",
+		"firefox",
+		"foot",
+	};
+	int default_count = sizeof(default_apps) / sizeof(default_apps[0]);
 
 	// Create ~/.config directory if it doesn't exist
 	char config_dir[512];
@@ -846,6 +847,7 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp,
 		"# Edit this file to add or remove applications from the "
 		"bar\n\n");
+
 	fprintf(fp, "[global]\n");
 	fprintf(fp, "icon_size=64\n");
 	fprintf(fp, "# label_mode: always | hover | never\n");
@@ -863,29 +865,34 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp,
 		"# label_size: font size in points for the app-name label\n");
 	fprintf(fp, "label_size=10\n\n");
+
 	fprintf(fp, "[apps]\n");
 
-	if (firefox) {
-		char *icon_path = find_best_icon("firefox");
-		if (icon_path) {
-			fprintf(fp, "name=%s\n", firefox->name);
-			fprintf(fp, "icon=%s\n", icon_path);
-			fprintf(fp, "exec=%s\n\n", firefox->exec);
-		}
+	int written = 0;
+
+	for (int i = 0; i < default_count; i++) {
+		DesktopEntry *app =
+			find_app_by_name(entries, count, default_apps[i]);
+
+		if (!app)
+			continue;
+
+		char *icon_path = find_best_icon(default_apps[i]);
+		if (!icon_path)
+			continue;
+
+		fprintf(fp, "name=%s\n", app->name);
+		fprintf(fp, "icon=%s\n", icon_path);
+		fprintf(fp, "exec=%s\n\n", app->exec);
+
 		free(icon_path);
-	}
-	if (foot) {
-		char *icon_path = find_best_icon("foot");
-		if (icon_path) {
-			fprintf(fp, "name=%s\n", foot->name);
-			fprintf(fp, "icon=%s\n", icon_path);
-			fprintf(fp, "exec=%s\n\n", foot->exec);
-		}
-		free(icon_path);
+		written++;
 	}
 
 	fclose(fp);
-	return 1;
+
+	// Return success only if at least one app was written
+	return written > 0;
 }
 
 // Initialize the config file on first run
