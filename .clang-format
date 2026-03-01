@@ -12,8 +12,8 @@
 
 BasedOnStyle: LLVM
 UseTab: Always
-IndentWidth: 8
-ContinuationIndentWidth: 8
+IndentWidth: 4
+ContinuationIndentWidth: 4
 AlignAfterOpenBracket: DontAlign
 AlignOperands: DontAlign
 AlwaysBreakAfterDefinitionReturnType: true
