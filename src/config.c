@@ -622,11 +622,11 @@ parse_config_file(FILE *fp)
 
 		// Handle global section
 		if (in_global_section) {
-			if (strcmp(key, "icon_size") == 0) {
+			if (strcmp(key, "icon-size") == 0) {
 				cfg.icon_size = atoi(value);
 				if (verbose >= 2)
-					printf("[DBG²]   icon_size: %d\n", cfg.icon_size);
-			} else if (strcmp(key, "label_mode") == 0) {
+					printf("[DBG²]   icon-size: %d\n", cfg.icon_size);
+			} else if (strcmp(key, "label-mode") == 0) {
 				if (strcmp(value, "hover") == 0)
 					cfg.label_mode = LABEL_MODE_HOVER;
 				else if (strcmp(value, "never") == 0)
@@ -634,8 +634,8 @@ parse_config_file(FILE *fp)
 				else
 					cfg.label_mode = LABEL_MODE_ALWAYS;
 				if (verbose >= 2)
-					printf("[DBG²]   label_mode: %s\n", value);
-			} else if (strcmp(key, "label_color") == 0) {
+					printf("[DBG²]   label-mode: %s\n", value);
+			} else if (strcmp(key, "label-color") == 0) {
 				// Accept #RRGGBB or #RRGGBBAA
 				const char *hex = value;
 				if (hex[0] == '#')
@@ -646,15 +646,15 @@ parse_config_file(FILE *fp)
 				else
 					cfg.label_color = (unsigned int)parsed;
 				if (verbose >= 2)
-					printf("[DBG²]   label_color: 0x%08X\n", cfg.label_color);
-			} else if (strcmp(key, "label_offset") == 0) {
+					printf("[DBG²]   label-color: 0x%08X\n", cfg.label_color);
+			} else if (strcmp(key, "label-offset") == 0) {
 				cfg.label_offset = atoi(value);
 				if (verbose >= 2)
-					printf("[DBG²]   label_offset: %d\n", cfg.label_offset);
-			} else if (strcmp(key, "label_size") == 0) {
+					printf("[DBG²]   label-offset: %d\n", cfg.label_offset);
+			} else if (strcmp(key, "label-size") == 0) {
 				cfg.label_size = atoi(value);
 				if (verbose >= 2)
-					printf("[DBG²]   label_size: %d\n", cfg.label_size);
+					printf("[DBG²]   label-size: %d\n", cfg.label_size);
 			} else if (strcmp(key, "exclusive-zone") == 0) {
 				cfg.exclusive_zone = atoi(value);
 				if (verbose >= 2)
@@ -869,21 +869,21 @@ write_default_config(DesktopEntry **entries, int count)
 		"bar\n\n");
 
 	fprintf(fp, "[global]\n");
-	fprintf(fp, "icon_size=64\n");
-	fprintf(fp, "# label_mode: always | hover | never\n");
-	fprintf(fp, "label_mode=hover\n");
-	fprintf(fp, "# label_color: hex color #RRGGBB or #RRGGBBAA\n");
-	fprintf(fp, "label_color=#FFFFFF\n");
+	fprintf(fp, "icon-size=64\n");
+	fprintf(fp, "# label-mode: always | hover | never\n");
+	fprintf(fp, "label-mode=hover\n");
+	fprintf(fp, "# label-color: hex color #RRGGBB or #RRGGBBAA\n");
+	fprintf(fp, "label-color=#FFFFFF\n");
 	fprintf(fp,
 		"# label_offset: pixels from the bottom edge of the icon "
 		"to the text baseline\n");
 	fprintf(fp,
-		"# 0 = bottom edge (descenders clipped), icon_size = top "
+		"# 0 = bottom edge (descenders clipped), icon-size = top "
 		"edge (text invisible)\n");
 	fprintf(fp, "# recommended range: 4-16\n");
-	fprintf(fp, "label_offset=10\n");
-	fprintf(fp, "# label_size: font size in points for the app-name label\n");
-	fprintf(fp, "label_size=10\n");
+	fprintf(fp, "label-offset=10\n");
+	fprintf(fp, "# label-size: font size in points for the app-name label\n");
+	fprintf(fp, "label-size=10\n");
 	fprintf(fp, "\n");
 	fprintf(fp, "# exclusive-zone: interaction with other surfaces\n");
 	fprintf(fp, "#   0  (default): surface will be moved to avoid occluding\n");
