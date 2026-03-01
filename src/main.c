@@ -506,7 +506,7 @@ registry_add(void *data, struct wl_registry *reg, uint32_t name,
 		compositor = wl_registry_bind(reg, name, &wl_compositor_interface, 4);
 	} else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
 		layer_shell =
-			wl_registry_bind(reg, name, &zwlr_layer_shell_v1_interface, 1);
+			wl_registry_bind(reg, name, &zwlr_layer_shell_v1_interface, 4);
 	} else if (strcmp(interface, wl_shm_interface.name) == 0) {
 		shm = wl_registry_bind(reg, name, &wl_shm_interface, 1);
 	} else if (strcmp(interface, wl_seat_interface.name) == 0) {
@@ -611,10 +611,50 @@ main(int argc, char *argv[])
 			icon_span);
 	}
 
-	// Promote the surface to a layer-shell surface on the TOP layer.
+	// Map the Config layer enum to the Wayland layer-shell layer value
+	uint32_t wl_layer = ZWLR_LAYER_SHELL_V1_LAYER_TOP; // Default
+	switch (app_config.layer) {
+	case LAYER_BACKGROUND:
+		wl_layer = ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND;
+		break;
+	case LAYER_BOTTOM:
+		wl_layer = ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM;
+		break;
+	case LAYER_OVERLAY:
+		wl_layer = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY;
+		break;
+	case LAYER_TOP:
+	default:
+		wl_layer = ZWLR_LAYER_SHELL_V1_LAYER_TOP;
+		break;
+	}
+
+	if (verbose) {
+		const char *layer_name = "unknown";
+		switch (app_config.layer) {
+		case LAYER_OVERLAY:
+			layer_name = "overlay";
+			break;
+		case LAYER_TOP:
+			layer_name = "top";
+			break;
+		case LAYER_BACKGROUND:
+			layer_name = "background";
+			break;
+		case LAYER_BOTTOM:
+			layer_name = "bottom";
+			break;
+		}
+		printf("[DBG] Using layer-shell layer: %s\n", layer_name);
+	}
+
+	// Promote the surface to a layer-shell surface using the configured layer.
 	// The namespace "labar" identifies our client to the compositor.
 	layer_surface = zwlr_layer_shell_v1_get_layer_surface(layer_shell, surface,
-		NULL, ZWLR_LAYER_SHELL_V1_LAYER_TOP, "labar");
+		NULL, wl_layer, "labar");
+
+	// Set the layer for the surface
+	zwlr_layer_surface_v1_set_layer(layer_surface, wl_layer);
 
 	// Anchor the bar and set dimensions based on position
 	uint32_t anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM; // Default anchor

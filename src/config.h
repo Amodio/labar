@@ -27,6 +27,14 @@ typedef enum {
 	POSITION_RIGHT,	 // Right side of screen (vertical orientation)
 } Position;
 
+// Layer for the layer-shell surface
+typedef enum {
+	LAYER_BACKGROUND, // Beneath everything (for wallpapers, lock screens)
+	LAYER_BOTTOM,	  // Below normal windows (default for docks/panels)
+	LAYER_TOP,		  // Above normal windows
+	LAYER_OVERLAY,	  // On top of everything (for notifications, overlays)
+} Layer;
+
 // Configuration structure holding loaded applications
 typedef struct {
 	DesktopEntry **apps;
@@ -54,6 +62,7 @@ typedef struct {
 	int exclusive_zone; // Exclusive zone for zwlr_layer_surface_v1 (default: 0)
 	int icon_spacing;	// Spacing between icons in pixels (default: 0)
 	Position position;	// Bar position on screen (default: bottom)
+	Layer layer;		// Layer-shell layer (default: bottom)
 } Config;
 
 // List all valid applications from /usr/share/applications/*.desktop

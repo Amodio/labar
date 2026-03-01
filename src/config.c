@@ -503,6 +503,7 @@ parse_config_file(FILE *fp)
 	cfg.exclusive_zone = 0;			   // No exclusive zone by default
 	cfg.icon_spacing = 0;			   // No spacing between icons by default
 	cfg.position = POSITION_BOTTOM;	   // Bar at the bottom by default
+	cfg.layer = LAYER_TOP;			   // Layer-shell top layer by default
 	if (!cfg.apps)
 		return cfg;
 
@@ -671,9 +672,20 @@ parse_config_file(FILE *fp)
 				else if (strcmp(value, "right") == 0)
 					cfg.position = POSITION_RIGHT;
 				else
-					cfg.position = POSITION_BOTTOM; // Default to bottom
+					cfg.position = POSITION_BOTTOM; // Default
 				if (verbose >= 2)
 					printf("[DBG²]   position: %s\n", value);
+			} else if (strcmp(key, "layer") == 0) {
+				if (strcmp(value, "background") == 0)
+					cfg.layer = LAYER_BACKGROUND;
+				else if (strcmp(value, "bottom") == 0)
+					cfg.layer = LAYER_BOTTOM;
+				else if (strcmp(value, "overlay") == 0)
+					cfg.layer = LAYER_OVERLAY;
+				else
+					cfg.layer = LAYER_TOP; // Default
+				if (verbose >= 2)
+					printf("[DBG²]   layer: %s\n", value);
 			}
 			continue;
 		}
@@ -902,7 +914,15 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp, "#   top:              horizontal bar at the top\n");
 	fprintf(fp, "#   left:             vertical bar on the left\n");
 	fprintf(fp, "#   right:            vertical bar on the right\n");
-	fprintf(fp, "position=bottom\n\n");
+	fprintf(fp, "position=bottom\n");
+	fprintf(fp, "\n");
+	fprintf(fp, "# layer: layer-shell layer for the surface\n");
+	fprintf(fp,
+		"#   background:               beneath everything (for wallpapers)\n");
+	fprintf(fp, "#   bottom:           below normal windows (for docks)\n");
+	fprintf(fp, "#   top (default):    above normal windows\n");
+	fprintf(fp, "#   overlay:          on top of everything\n");
+	fprintf(fp, "layer=top\n\n");
 
 	fprintf(fp, "[apps]\n");
 
