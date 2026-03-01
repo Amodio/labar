@@ -36,7 +36,7 @@ IncludeCategories:
   - Regex: '.*'
 
 #Added:
-ColumnLimit: 80
+ColumnLimit: 0
 BreakStringLiterals: false
 AlignTrailingComments: false
 AlignEscapedNewlines: DontAlign

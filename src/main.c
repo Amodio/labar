@@ -677,16 +677,21 @@ main(int argc, char *argv[])
 	// Parse command-line arguments
 	int opt;
 	static struct option long_options[] = {
-		{"verbose", no_argument, 0, 'v'}, {0, 0, 0, 0}};
+		{"verbose", no_argument, 0, 'v'},
+		{"version", no_argument, 0, 'V'},
+		{0, 0, 0, 0}};
 
-	while ((opt = getopt_long(argc, argv, "v", long_options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "vV", long_options, NULL)) != -1) {
 		switch (opt) {
 		case 'v':
 			verbose++;
 			break;
+		case 'V':
+			printf("%s\n", VERSION);
+			return 0;
 		default:
 			fprintf(stderr,
-				"Usage: %s [-v|--verbose] [-v|--verbose]\n",
+				"Usage: %s [-v|--verbose] [-V|--version]\n",
 				argv[0]);
 			return 1;
 		}

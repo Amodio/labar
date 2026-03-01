@@ -28,4 +28,7 @@ executable(
     cairo_dep,
     librsvg_dep,
   ],
+  c_args: [
+    '-DVERSION="' + meson.project_name() + ' ' + meson.project_version() + '"'
+    ],
 )

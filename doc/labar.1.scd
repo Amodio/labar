@@ -1,17 +1,21 @@
 labar(1)
 
-; SYNOPSIS
+# NAME
 
 labar - A Wayland layer-shell application bar with configurable icons
 
-; DESCRIPTION
+# SYNOPSIS
+
+*labar* [options]
+
+# DESCRIPTION
 
 *labar* is a minimal Wayland layer-shell bar for displaying application icons.
 It reads a configuration file to determine which applications to display and
 renders their icons horizontally on the screen. The bar can be customized via
 an INI-style configuration file located at *~/.config/labar.cfg*.
 
-; OPTIONS
+# OPTIONS
 
 *-v, --verbose*
 	Enable verbose debug output. Specify multiple times for increased verbosity:
@@ -19,15 +23,18 @@ an INI-style configuration file located at *~/.config/labar.cfg*.
 	- *-vv*: Detailed parsing information (.desktop files, config parsing,
 	icon discovery)
 
+*-V, --version*
+	Print the version number and exit.
+
 *-h, --help*
 	Display help message and exit.
 
-; CONFIGURATION
+# CONFIGURATION
 
 The configuration file is located at *~/.config/labar.cfg*.
 If it does not exist, *labar* will attempt to auto-generate it.
 
-; Configuration Format
+## Configuration Format
 
 The configuration file uses an INI-style format with two sections:
 
@@ -49,7 +56,7 @@ The configuration file uses an INI-style format with two sections:
 	*exec=COMMAND*
 		Command to execute when the icon is clicked.
 
-; Example Configuration
+## Example Configuration
 
 ```
 # labar configuration
@@ -66,31 +73,31 @@ icon=/usr/share/icons/hicolor/scalable/apps/foot.svg
 exec=foot
 ```
 
-; ICON DISCOVERY
+# ICON DISCOVERY
 
 When creating a default configuration, *labar* automatically discovers the
 best-quality icons for applications:
 
-1. Searches /usr/share/icons recursively
-2. Prioritizes SVG icons (scalable, highest quality)
-3. Falls back to PNG icons, sorted by size (largest first)
-4. Stores the full path in the configuration file
+. Searches /usr/share/icons recursively
+. Prioritizes SVG icons (scalable, highest quality)
+. Falls back to PNG icons, sorted by size (largest first)
+. Stores the full path in the configuration file
 
 Icons can be specified manually in the configuration by providing the full
 filesystem path.
 
-; ENVIRONMENT
+# ENVIRONMENT
 
 *HOME*
 	Used to locate the configuration file at *$HOME/.config/labar.cfg*.
 
-; FILES
+# FILES
 
 *~/.config/labar.cfg*
 	User configuration file. Created automatically on first run if Firefox
 	or Foot are found on the system.
 
-; EXAMPLES
+# EXAMPLES
 
 Run with normal verbosity:
 ```
@@ -102,14 +109,17 @@ Run with detailed parsing information:
 labar -vv
 ```
 
-; SEE ALSO
+Print the version:
+```
+labar -V
+```
+
+# SEE ALSO
 
 *sway*(1), *weston*(1)
 
-; GIT
-<https://github.com/Amodio/labar>
+# AUTHORS
 
-; AUTHOR
 Jacques Boscq <jacques@boscq.fr>
 
-Created for Wayland-based desktop environments with layer-shell support.
+Source code available at https://github.com/Amodio/labar
