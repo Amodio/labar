@@ -19,6 +19,14 @@ typedef enum {
 	LABEL_MODE_NEVER,  // Never draw the label
 } LabelMode;
 
+// Bar position on screen
+typedef enum {
+	POSITION_BOTTOM, // Bottom of screen (horizontal orientation)
+	POSITION_TOP,	 // Top of screen (horizontal orientation)
+	POSITION_LEFT,	 // Left side of screen (vertical orientation)
+	POSITION_RIGHT,	 // Right side of screen (vertical orientation)
+} Position;
+
 // Configuration structure holding loaded applications
 typedef struct {
 	DesktopEntry **apps;
@@ -45,6 +53,7 @@ typedef struct {
 	int label_offset;
 	int exclusive_zone; // Exclusive zone for zwlr_layer_surface_v1 (default: 0)
 	int icon_spacing;	// Spacing between icons in pixels (default: 0)
+	Position position;	// Bar position on screen (default: bottom)
 } Config;
 
 // List all valid applications from /usr/share/applications/*.desktop

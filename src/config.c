@@ -502,6 +502,7 @@ parse_config_file(FILE *fp)
 	cfg.label_offset = 10;			   // Baseline 10 px above the bottom edge
 	cfg.exclusive_zone = 0;			   // No exclusive zone by default
 	cfg.icon_spacing = 0;			   // No spacing between icons by default
+	cfg.position = POSITION_BOTTOM;	   // Bar at the bottom by default
 	if (!cfg.apps)
 		return cfg;
 
@@ -662,6 +663,17 @@ parse_config_file(FILE *fp)
 				cfg.icon_spacing = atoi(value);
 				if (verbose >= 2)
 					printf("[DBG²]   icon-spacing: %d\n", cfg.icon_spacing);
+			} else if (strcmp(key, "position") == 0) {
+				if (strcmp(value, "top") == 0)
+					cfg.position = POSITION_TOP;
+				else if (strcmp(value, "left") == 0)
+					cfg.position = POSITION_LEFT;
+				else if (strcmp(value, "right") == 0)
+					cfg.position = POSITION_RIGHT;
+				else
+					cfg.position = POSITION_BOTTOM; // Default to bottom
+				if (verbose >= 2)
+					printf("[DBG²]   position: %s\n", value);
 			}
 			continue;
 		}
@@ -883,7 +895,14 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp, "exclusive-zone=0\n");
 	fprintf(fp, "\n");
 	fprintf(fp, "# icon-spacing: spacing between icons in pixels\n");
-	fprintf(fp, "icon-spacing=0\n\n");
+	fprintf(fp, "icon-spacing=0\n");
+	fprintf(fp, "\n");
+	fprintf(fp, "# position: where to place the bar on screen\n");
+	fprintf(fp, "#   bottom (default): horizontal bar at the bottom\n");
+	fprintf(fp, "#   top:              horizontal bar at the top\n");
+	fprintf(fp, "#   left:             vertical bar on the left\n");
+	fprintf(fp, "#   right:            vertical bar on the right\n");
+	fprintf(fp, "position=bottom\n\n");
 
 	fprintf(fp, "[apps]\n");
 

@@ -57,18 +57,19 @@ int last_hovered_icon = -1;
 // ---------------------------------------------------------------------------
 // get_icon_at_position
 //
-// Calculate which icon (if any) is at the given x coordinate, accounting for
-// icon spacing.
+// Calculate which icon (if any) is at the given coordinate.
+// For horizontal layouts (TOP/BOTTOM), uses x coordinate.
+// For vertical layouts (LEFT/RIGHT), uses y coordinate.
 //
 // Parameters:
-//   x – horizontal coordinate in pixels
+//   coord – horizontal (x) or vertical (y) coordinate in pixels
 //
 // Returns the icon index (0 to count-1) or -1 if no icon is at that position
 // ---------------------------------------------------------------------------
 int
-get_icon_at_position(double x)
+get_icon_at_position(double coord)
 {
-	if (x < 0)
+	if (coord < 0)
 		return -1;
 
 	int icon_size = app_config.icon_size;
@@ -79,7 +80,7 @@ get_icon_at_position(double x)
 	int pos = 0;
 	for (int i = 0; i < app_config.count; i++) {
 		int icon_end = pos + icon_size;
-		if (x >= pos && x < icon_end)
+		if (coord >= pos && coord < icon_end)
 			return i;
 		pos = icon_end + spacing;
 	}
@@ -87,9 +88,11 @@ get_icon_at_position(double x)
 	return -1;
 }
 
-// Function to calculate x_offset for a given icon index, accounting for spacing
+// Function to calculate offset for a given icon index, accounting for spacing
+// For horizontal layouts, returns x offset. For vertical layouts, returns y
+// offset.
 int
-get_x_offset_for_icon(int icon_index)
+get_offset_for_icon(int icon_index)
 {
 	if (icon_index < 0 || icon_index >= app_config.count)
 		return 0;
@@ -360,60 +363,108 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 		// Clear the entire buffer to transparent
 		memset(pixels, 0, surf_width * surf_height * 4);
 
-		// Draw each loaded application icon horizontally
-		int x_offset = 0;
 		int icon_size = app_config.icon_size;		// Use configured icon size
 		int icon_spacing = app_config.icon_spacing; // Use configured spacing
-		for (int i = 0; i < app_config.count; i++) {
-			if (x_offset + icon_size > surf_width)
-				break; // Don't draw beyond buffer width
 
-			if (app_config.apps[i]->icon) {
-				if (verbose >= 2) {
-					printf("[DBG²] Drawing icon %d at x=%d: %s (size=%dx%d)\n",
-						i, x_offset, app_config.apps[i]->icon, icon_size,
+		// Determine if bar is horizontal or vertical
+		int is_vertical = (app_config.position == POSITION_LEFT ||
+			app_config.position == POSITION_RIGHT);
+
+		if (is_vertical) {
+			// Draw each application icon vertically (top to bottom)
+			int y_offset = 0;
+			for (int i = 0; i < app_config.count; i++) {
+				if (y_offset + icon_size > surf_height)
+					break; // Don't draw beyond buffer height
+
+				if (app_config.apps[i]->icon) {
+					if (verbose >= 2) {
+						printf(
+							"[DBG²] Drawing icon %d at y=%d: %s (size=%dx%d)\n",
+							i, y_offset, app_config.apps[i]->icon, icon_size,
+							icon_size);
+					}
+
+					// Create a temporary buffer for this icon tile
+					uint32_t *tile_data = malloc(icon_size * icon_size * 4);
+					memset(tile_data, 0, icon_size * icon_size * 4);
+
+					// Draw the SVG onto the tile buffer
+					draw_icon(app_config.apps[i]->icon, tile_data, icon_size,
 						icon_size);
+
+					// Draw the app name as a text overlay on the icon
+					uint32_t *text_overlay = malloc(icon_size * icon_size * 4);
+					memcpy(text_overlay, tile_data, icon_size * icon_size * 4);
+
+					free(tile_data);
+
+					// Draw the label only when label_mode is ALWAYS
+					if (app_config.label_mode == LABEL_MODE_ALWAYS) {
+						int baseline = icon_size - app_config.label_offset;
+						draw_text(text_overlay, icon_size, icon_size,
+							app_config.apps[i]->name, baseline,
+							app_config.label_color);
+					}
+
+					// Blit the text overlay onto the main buffer
+					for (int ty = 0; ty < icon_size; ty++) {
+						uint32_t *src = text_overlay + (ty * icon_size);
+						uint32_t *dst = pixels + ((y_offset + ty) * surf_width);
+						memcpy(dst, src, icon_size * 4);
+					}
+
+					free(text_overlay);
+					y_offset += icon_size + icon_spacing;
 				}
+			}
+		} else {
+			// Draw each application icon horizontally (left to right)
+			int x_offset = 0;
+			for (int i = 0; i < app_config.count; i++) {
+				if (x_offset + icon_size > surf_width)
+					break; // Don't draw beyond buffer width
 
-				// Create a temporary buffer for this icon tile
-				uint32_t *tile_data = malloc(icon_size * icon_size * 4);
-				memset(tile_data, 0, icon_size * icon_size * 4);
+				if (app_config.apps[i]->icon) {
+					if (verbose >= 2) {
+						printf(
+							"[DBG²] Drawing icon %d at x=%d: %s (size=%dx%d)\n",
+							i, x_offset, app_config.apps[i]->icon, icon_size,
+							icon_size);
+					}
 
-				// Draw the SVG onto the tile buffer
-				draw_icon(app_config.apps[i]->icon, tile_data, icon_size,
-					icon_size);
+					// Create a temporary buffer for this icon tile
+					uint32_t *tile_data = malloc(icon_size * icon_size * 4);
+					memset(tile_data, 0, icon_size * icon_size * 4);
 
-				// Draw the app name as a text overlay on the
-				// icon Create a temporary buffer for the icon
-				// with text overlay
-				uint32_t *text_overlay = malloc(icon_size * icon_size * 4);
-				memcpy(text_overlay, tile_data, icon_size * icon_size * 4);
+					// Draw the SVG onto the tile buffer
+					draw_icon(app_config.apps[i]->icon, tile_data, icon_size,
+						icon_size);
 
-				free(tile_data);
+					// Draw the app name as a text overlay on the icon
+					uint32_t *text_overlay = malloc(icon_size * icon_size * 4);
+					memcpy(text_overlay, tile_data, icon_size * icon_size * 4);
 
-				// Draw the label only when label_mode is
-				// ALWAYS. HOVER mode is handled at render-time
-				// via pointer events; NEVER skips drawing
-				// entirely.
-				if (app_config.label_mode == LABEL_MODE_ALWAYS) {
-					// Baseline placed above the bottom edge
-					// by label_offset pixels so ascenders
-					// and descenders stay inside the tile.
-					int baseline = icon_size - app_config.label_offset;
-					draw_text(text_overlay, icon_size, icon_size,
-						app_config.apps[i]->name, baseline,
-						app_config.label_color);
+					free(tile_data);
+
+					// Draw the label only when label_mode is ALWAYS
+					if (app_config.label_mode == LABEL_MODE_ALWAYS) {
+						int baseline = icon_size - app_config.label_offset;
+						draw_text(text_overlay, icon_size, icon_size,
+							app_config.apps[i]->name, baseline,
+							app_config.label_color);
+					}
+
+					// Blit the text overlay onto the main buffer
+					for (int ty = 0; ty < icon_size; ty++) {
+						uint32_t *src = text_overlay + (ty * icon_size);
+						uint32_t *dst = pixels + ((ty)*surf_width) + x_offset;
+						memcpy(dst, src, icon_size * 4);
+					}
+
+					free(text_overlay);
+					x_offset += icon_size + icon_spacing;
 				}
-
-				// Blit the text overlay onto the main buffer
-				for (int ty = 0; ty < icon_size; ty++) {
-					uint32_t *src = text_overlay + (ty * icon_size);
-					uint32_t *dst = pixels + ((ty)*surf_width) + x_offset;
-					memcpy(dst, src, icon_size * 4);
-				}
-
-				free(text_overlay);
-				x_offset += icon_size + icon_spacing;
 			}
 		}
 
@@ -500,9 +551,7 @@ main(int argc, char *argv[])
 	// Load config (will create it if it doesn't exist)
 	app_config = load_config();
 	if (!app_config.apps || app_config.count == 0) {
-		fprintf(stderr,
-			"Failed to load configuration from ~/" CONFIG_DIR "/" CONFIG_NAME
-			"\n");
+		fprintf(stderr, "Failed to load configuration...\n");
 		cache_free();
 		return 1;
 	}
@@ -551,13 +600,15 @@ main(int argc, char *argv[])
 	surface = wl_compositor_create_surface(compositor);
 
 	// Calculate bar dimensions based on number of icons and spacing
-	int required_width = app_config.count * app_config.icon_size +
+	int icon_span = app_config.count * app_config.icon_size +
 		(app_config.count - 1) * app_config.icon_spacing;
-	int bar_height = app_config.icon_size;
+	int icon_size_single = app_config.icon_size;
 
 	if (verbose) {
-		printf("[DBG] Bar dimensions: %dx%d (%d icons x %dpx each)\n",
-			required_width, bar_height, app_config.count, app_config.icon_size);
+		printf("[DBG] Bar dimensions: %d icons x %dpx each + %dpx spacing = "
+			   "%d total\n",
+			app_config.count, app_config.icon_size, app_config.icon_spacing,
+			icon_span);
 	}
 
 	// Promote the surface to a layer-shell surface on the TOP layer.
@@ -565,15 +616,53 @@ main(int argc, char *argv[])
 	layer_surface = zwlr_layer_shell_v1_get_layer_surface(layer_shell, surface,
 		NULL, ZWLR_LAYER_SHELL_V1_LAYER_TOP, "labar");
 
-	// Anchor the bar to the output
-	zwlr_layer_surface_v1_set_anchor(layer_surface,
-		ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM);
+	// Anchor the bar and set dimensions based on position
+	uint32_t anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM; // Default anchor
+	int bar_width = icon_span;
+	int bar_height_actual = icon_size_single;
+
+	switch (app_config.position) {
+	case POSITION_TOP:
+		// Horizontal bar at top
+		anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP;
+		bar_width = icon_span;
+		bar_height_actual = icon_size_single;
+		break;
+	case POSITION_LEFT:
+		// Vertical bar on left
+		anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT;
+		bar_width = icon_size_single;
+		bar_height_actual = icon_span;
+		break;
+	case POSITION_RIGHT:
+		// Vertical bar on right
+		anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
+		bar_width = icon_size_single;
+		bar_height_actual = icon_span;
+		break;
+	case POSITION_BOTTOM:
+	default:
+		// Horizontal bar at bottom
+		anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
+		bar_width = icon_span;
+		bar_height_actual = icon_size_single;
+		break;
+	}
+
+	zwlr_layer_surface_v1_set_anchor(layer_surface, anchor);
 
 	// Request the calculated bar dimensions
-	zwlr_layer_surface_v1_set_size(layer_surface, required_width, bar_height);
+	zwlr_layer_surface_v1_set_size(layer_surface, bar_width, bar_height_actual);
 
 	// Reserve space so other surfaces don't overlap the dock
-	zwlr_layer_surface_v1_set_exclusive_zone(layer_surface, bar_height);
+	// For horizontal bars (TOP/BOTTOM), reserve height
+	// For vertical bars (LEFT/RIGHT), reserve width
+	int exclusive_zone_size = (app_config.position == POSITION_LEFT ||
+								  app_config.position == POSITION_RIGHT) ?
+		bar_width :
+		bar_height_actual;
+	zwlr_layer_surface_v1_set_exclusive_zone(layer_surface,
+		exclusive_zone_size);
 
 	zwlr_layer_surface_v1_add_listener(layer_surface, &layer_listener, NULL);
 

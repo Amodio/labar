@@ -11,8 +11,8 @@
 extern void draw_icon(const char *path, uint32_t *data, int width, int height);
 extern void draw_text(uint32_t *data, int width, int height, const char *text,
 	int y_offset, unsigned int color);
-extern int get_icon_at_position(double x);
-extern int get_x_offset_for_icon(int icon_index);
+extern int get_icon_at_position(double coord);
+extern int get_offset_for_icon(int icon_index);
 
 // ---------------------------------------------------------------------------
 // Pointer listeners — handle mouse events
@@ -41,7 +41,9 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 		int idx = last_hovered_icon;
 
 		if (idx < app_config.count && app_config.apps[idx]->icon) {
-			int x_offset = get_x_offset_for_icon(idx);
+			int offset = get_offset_for_icon(idx);
+			int is_vertical = (app_config.position == POSITION_LEFT ||
+				app_config.position == POSITION_RIGHT);
 
 			uint32_t *tile = malloc(icon_size * icon_size * 4);
 			if (tile) {
@@ -50,10 +52,20 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 					icon_size);
 				// No label — pointer has left the surface
 
-				for (int ty = 0; ty < icon_size; ty++) {
-					uint32_t *src = tile + ty * icon_size;
-					uint32_t *dst = pixels + ty * surf_width + x_offset;
-					memcpy(dst, src, icon_size * 4);
+				if (is_vertical) {
+					// Vertical layout: offset is y coordinate
+					for (int ty = 0; ty < icon_size; ty++) {
+						uint32_t *src = tile + ty * icon_size;
+						uint32_t *dst = pixels + (offset + ty) * surf_width;
+						memcpy(dst, src, icon_size * 4);
+					}
+				} else {
+					// Horizontal layout: offset is x coordinate
+					for (int ty = 0; ty < icon_size; ty++) {
+						uint32_t *src = tile + ty * icon_size;
+						uint32_t *dst = pixels + ty * surf_width + offset;
+						memcpy(dst, src, icon_size * 4);
+					}
 				}
 				free(tile);
 
@@ -74,8 +86,11 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 	current_pointer_x = wl_fixed_to_double(surface_x);
 	current_pointer_y = wl_fixed_to_double(surface_y);
 
-	// Determine which icon is under the pointer, accounting for spacing
-	int icon_index = get_icon_at_position(current_pointer_x);
+	// Determine which icon is under the pointer based on layout orientation
+	int is_vertical = (app_config.position == POSITION_LEFT ||
+		app_config.position == POSITION_RIGHT);
+	double coord = is_vertical ? current_pointer_y : current_pointer_x;
+	int icon_index = get_icon_at_position(coord);
 
 	// Only print when hovering icon changes to avoid spam
 	if (icon_index != last_hovered_icon) {
@@ -96,7 +111,7 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 				if (!app_config.apps[idx]->icon)
 					continue;
 
-				int x_offset = get_x_offset_for_icon(idx);
+				int offset = get_offset_for_icon(idx);
 
 				// Re-render the SVG into a fresh tile
 				uint32_t *tile = malloc(icon_size * icon_size * 4);
@@ -115,10 +130,20 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 				}
 
 				// Blit the tile onto the main buffer
-				for (int ty = 0; ty < icon_size; ty++) {
-					uint32_t *src = tile + ty * icon_size;
-					uint32_t *dst = pixels + ty * surf_width + x_offset;
-					memcpy(dst, src, icon_size * 4);
+				if (is_vertical) {
+					// Vertical layout: offset is y coordinate
+					for (int ty = 0; ty < icon_size; ty++) {
+						uint32_t *src = tile + ty * icon_size;
+						uint32_t *dst = pixels + (offset + ty) * surf_width;
+						memcpy(dst, src, icon_size * 4);
+					}
+				} else {
+					// Horizontal layout: offset is x coordinate
+					for (int ty = 0; ty < icon_size; ty++) {
+						uint32_t *src = tile + ty * icon_size;
+						uint32_t *dst = pixels + ty * surf_width + offset;
+						memcpy(dst, src, icon_size * 4);
+					}
 				}
 				free(tile);
 			}
@@ -168,8 +193,11 @@ pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 		(state == WL_POINTER_BUTTON_STATE_PRESSED) ? "PRESSED" : "RELEASED";
 
 	// Calculate which icon was clicked based on current pointer position,
-	// accounting for spacing
-	int icon_index = get_icon_at_position(current_pointer_x);
+	// accounting for spacing and layout orientation
+	int is_vertical = (app_config.position == POSITION_LEFT ||
+		app_config.position == POSITION_RIGHT);
+	double coord = is_vertical ? current_pointer_y : current_pointer_x;
+	int icon_index = get_icon_at_position(coord);
 
 	if (icon_index >= 0 && icon_index < app_config.count) {
 		if (verbose) {
@@ -202,12 +230,11 @@ pointer_axis(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 		direction = (scroll_value > 0) ? "RIGHT" : "LEFT";
 	}
 
-	// Determine which icon is under the pointer
-	if (app_config.icon_size > 0) {
-		icon_index = (int)(current_pointer_x / app_config.icon_size);
-		if (icon_index < 0 || icon_index >= app_config.count)
-			icon_index = -1;
-	}
+	// Determine which icon is under the pointer based on layout orientation
+	int is_vertical = (app_config.position == POSITION_LEFT ||
+		app_config.position == POSITION_RIGHT);
+	double coord = is_vertical ? current_pointer_y : current_pointer_x;
+	icon_index = get_icon_at_position(coord);
 
 	if (icon_index >= 0) {
 		if (verbose) {
