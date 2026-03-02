@@ -1,6 +1,6 @@
 project('labar', 'c',
   version : '0.3.0',
-  default_options: ['c_std=c11']
+  default_options: ['c_std=c11', 'prefix=/usr']
 )
 
 # Wayland dependencies
@@ -17,6 +17,10 @@ subdir('protocols')
 # Documentation
 subdir('doc')
 
+# Volume icons installed to /usr/share/pixmaps/labar/ by default
+pixmap_dir = join_paths(get_option('datadir'), 'pixmaps', 'labar')
+subdir('pixmaps')
+
 # Main executable
 executable(
   'labar',
@@ -25,6 +29,7 @@ executable(
   'src/exec.c',
   'src/seat.c',
   'src/cache.c',
+#  'src/volume.c',
   dependencies: [
     wayland_client,
     wl_protocols,
@@ -32,6 +37,7 @@ executable(
     librsvg_dep,
   ],
   c_args: [
-    '-DVERSION="' + meson.project_name() + ' ' + meson.project_version() + '"'
+    '-DVERSION="' + meson.project_name() + ' ' + meson.project_version() + '"',
+    '-DPIXMAP_DIR="' + pixmap_dir + '"',
     ],
 )

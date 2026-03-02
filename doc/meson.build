@@ -1,5 +1,7 @@
 # Documentation build configuration for labar
+
 scdoc = find_program('scdoc', required: false)
+
 if scdoc.found()
   manpage = custom_target(
     'labar.1',
