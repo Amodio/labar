@@ -6,6 +6,7 @@
 #include <wayland-client.h>
 #include "config.h"
 #include "exec.h"
+#include "volume.h"
 
 // Forward declarations for drawing functions (defined in main.c)
 extern void draw_icon(const char *path, uint32_t *data, int width, int height);
@@ -39,42 +40,50 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 		buffer) {
 		int icon_size = app_config.icon_size;
 		int idx = last_hovered_icon;
+		int offset = get_offset_for_icon(idx);
+		int is_vertical = (app_config.position == POSITION_LEFT ||
+			app_config.position == POSITION_RIGHT);
 
-		if (idx < app_config.count && app_config.apps[idx]->icon) {
-			int offset = get_offset_for_icon(idx);
-			int is_vertical = (app_config.position == POSITION_LEFT ||
-				app_config.position == POSITION_RIGHT);
+		uint32_t *tile = malloc(icon_size * icon_size * 4);
+		if (tile) {
+			memset(tile, 0, icon_size * icon_size * 4);
 
-			uint32_t *tile = malloc(icon_size * icon_size * 4);
-			if (tile) {
-				memset(tile, 0, icon_size * icon_size * 4);
+			if (app_config.show_volume && idx == app_config.count) {
+				// Redraw volume icon without label
+				int percent = 0, muted = 0;
+				volume_get_info(&percent, &muted);
+				draw_icon(volume_get_icon_path(percent, muted), tile, icon_size,
+					icon_size);
+			} else if (idx < app_config.count && app_config.apps[idx]->icon) {
+				// Redraw app icon without label
 				draw_icon(app_config.apps[idx]->icon, tile, icon_size,
 					icon_size);
-				// No label — pointer has left the surface
-
-				if (is_vertical) {
-					// Vertical layout: offset is y coordinate
-					for (int ty = 0; ty < icon_size; ty++) {
-						uint32_t *src = tile + ty * icon_size;
-						uint32_t *dst = pixels + (offset + ty) * surf_width;
-						memcpy(dst, src, icon_size * 4);
-					}
-				} else {
-					// Horizontal layout: offset is x coordinate
-					for (int ty = 0; ty < icon_size; ty++) {
-						uint32_t *src = tile + ty * icon_size;
-						uint32_t *dst = pixels + ty * surf_width + offset;
-						memcpy(dst, src, icon_size * 4);
-					}
-				}
+			} else {
 				free(tile);
-
-				wl_surface_attach(surface, buffer, 0, 0);
-				wl_surface_damage(surface, 0, 0, surf_width, surf_height);
-				wl_surface_commit(surface);
+				goto done_leave;
 			}
+
+			if (is_vertical) {
+				for (int ty = 0; ty < icon_size; ty++) {
+					uint32_t *src = tile + ty * icon_size;
+					uint32_t *dst = pixels + (offset + ty) * surf_width;
+					memcpy(dst, src, icon_size * 4);
+				}
+			} else {
+				for (int ty = 0; ty < icon_size; ty++) {
+					uint32_t *src = tile + ty * icon_size;
+					uint32_t *dst = pixels + ty * surf_width + offset;
+					memcpy(dst, src, icon_size * 4);
+				}
+			}
+			free(tile);
+
+			wl_surface_attach(surface, buffer, 0, 0);
+			wl_surface_damage(surface, 0, 0, surf_width, surf_height);
+			wl_surface_commit(surface);
 		}
 	}
+done_leave:
 
 	last_hovered_icon = -1;
 }
@@ -99,46 +108,57 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 		if (app_config.label_mode == LABEL_MODE_HOVER && buffer) {
 			int icon_size = app_config.icon_size;
 
-			// Helper lambda-like: repaint one icon tile with or
-			// without label We do this for the previously hovered
-			// icon (remove label) and the newly hovered icon (add
-			// label).
 			int repaint_indices[2] = {last_hovered_icon, icon_index};
 			for (int r = 0; r < 2; r++) {
 				int idx = repaint_indices[r];
-				if (idx < 0 || idx >= app_config.count)
-					continue;
-				if (!app_config.apps[idx]->icon)
+				if (idx < 0)
 					continue;
 
 				int offset = get_offset_for_icon(idx);
 
-				// Re-render the SVG into a fresh tile
 				uint32_t *tile = malloc(icon_size * icon_size * 4);
 				if (!tile)
 					continue;
 				memset(tile, 0, icon_size * icon_size * 4);
-				draw_icon(app_config.apps[idx]->icon, tile, icon_size,
-					icon_size);
 
-				// Add label only for the newly hovered icon
-				if (idx == icon_index) {
-					int baseline = icon_size - app_config.label_offset;
-					draw_text(tile, icon_size, icon_size,
-						app_config.apps[idx]->name, baseline,
-						app_config.label_color);
+				if (app_config.show_volume && idx == app_config.count) {
+					// Volume slot
+					int percent = 0, muted = 0;
+					volume_get_info(&percent, &muted);
+					draw_icon(volume_get_icon_path(percent, muted), tile,
+						icon_size, icon_size);
+					if (idx == icon_index) {
+						char label[16];
+						volume_get_label(label, sizeof(label), percent, muted);
+						int baseline = icon_size - app_config.label_offset;
+						draw_text(tile, icon_size, icon_size, label, baseline,
+							app_config.label_color);
+					}
+				} else {
+					// Regular app slot
+					if (idx >= app_config.count ||
+						!app_config.apps[idx]->icon) {
+						free(tile);
+						continue;
+					}
+					draw_icon(app_config.apps[idx]->icon, tile, icon_size,
+						icon_size);
+					if (idx == icon_index) {
+						int baseline = icon_size - app_config.label_offset;
+						draw_text(tile, icon_size, icon_size,
+							app_config.apps[idx]->name, baseline,
+							app_config.label_color);
+					}
 				}
 
 				// Blit the tile onto the main buffer
 				if (is_vertical) {
-					// Vertical layout: offset is y coordinate
 					for (int ty = 0; ty < icon_size; ty++) {
 						uint32_t *src = tile + ty * icon_size;
 						uint32_t *dst = pixels + (offset + ty) * surf_width;
 						memcpy(dst, src, icon_size * 4);
 					}
 				} else {
-					// Horizontal layout: offset is x coordinate
 					for (int ty = 0; ty < icon_size; ty++) {
 						uint32_t *src = tile + ty * icon_size;
 						uint32_t *dst = pixels + ty * surf_width + offset;
@@ -156,8 +176,11 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 
 		last_hovered_icon = icon_index;
 		if (icon_index >= 0 && verbose >= 1) {
-			printf("[DBG] Hovering over icon/app #%d '%s'\n", icon_index,
-				app_config.apps[icon_index]->name);
+			if (app_config.show_volume && icon_index == app_config.count)
+				printf("[DBG] Hovering over volume widget\n");
+			else
+				printf("[DBG] Hovering over icon/app #%d '%s'\n", icon_index,
+					app_config.apps[icon_index]->name);
 		}
 	}
 
@@ -166,6 +189,66 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 		printf("[DBG⁴] Pointer motion at (%.2f, %.2f)\n", current_pointer_x,
 			current_pointer_y);
 	}
+}
+
+// ---------------------------------------------------------------------------
+// volume_repaint_tile
+//
+// Re-renders the volume icon slot after a state change (click or scroll).
+// Queries the current volume, picks the right PNG, and optionally overlays
+// the label (shown when label_mode is ALWAYS, or when the pointer is
+// currently hovering over the slot in HOVER mode).
+// ---------------------------------------------------------------------------
+static void
+volume_repaint_tile(struct wl_surface *surface)
+{
+	if (!buffer || !app_config.show_volume)
+		return;
+
+	int icon_size = app_config.icon_size;
+	int is_vertical = (app_config.position == POSITION_LEFT ||
+		app_config.position == POSITION_RIGHT);
+	int offset = get_offset_for_icon(app_config.count);
+
+	int percent = 0, muted = 0;
+	volume_get_info(&percent, &muted);
+
+	uint32_t *tile = malloc(icon_size * icon_size * 4);
+	if (!tile)
+		return;
+
+	memset(tile, 0, icon_size * icon_size * 4);
+	draw_icon(volume_get_icon_path(percent, muted), tile, icon_size, icon_size);
+
+	// Draw label when always-on, or when the pointer is hovering over the slot
+	int hovering = (last_hovered_icon == app_config.count);
+	if (app_config.label_mode == LABEL_MODE_ALWAYS ||
+		(app_config.label_mode == LABEL_MODE_HOVER && hovering)) {
+		char label[16];
+		volume_get_label(label, sizeof(label), percent, muted);
+		int baseline = icon_size - app_config.label_offset;
+		draw_text(tile, icon_size, icon_size, label, baseline,
+			app_config.label_color);
+	}
+
+	if (is_vertical) {
+		for (int ty = 0; ty < icon_size; ty++) {
+			uint32_t *src = tile + ty * icon_size;
+			uint32_t *dst = pixels + (offset + ty) * surf_width;
+			memcpy(dst, src, icon_size * 4);
+		}
+	} else {
+		for (int ty = 0; ty < icon_size; ty++) {
+			uint32_t *src = tile + ty * icon_size;
+			uint32_t *dst = pixels + ty * surf_width + offset;
+			memcpy(dst, src, icon_size * 4);
+		}
+	}
+	free(tile);
+
+	wl_surface_attach(surface, buffer, 0, 0);
+	wl_surface_damage(surface, 0, 0, surf_width, surf_height);
+	wl_surface_commit(surface);
 }
 
 void
@@ -208,6 +291,15 @@ pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 		if (button == BTN_LEFT && state == WL_POINTER_BUTTON_STATE_PRESSED) {
 			launch_app(app_config.apps[icon_index]);
 		}
+	} else if (app_config.show_volume && icon_index == app_config.count) {
+		if (verbose) {
+			printf("[DBG] Mouse button %s (%s) on volume widget\n", button_name,
+				state_name);
+		}
+		if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+			volume_handle_click(button);
+			volume_repaint_tile(surface);
+		}
 	} else {
 		if (verbose) {
 			printf("[DBG] Mouse button %s (%s) at (%.2f, %.2f) - no app hit\n",
@@ -236,11 +328,19 @@ pointer_axis(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 	double coord = is_vertical ? current_pointer_y : current_pointer_x;
 	icon_index = get_icon_at_position(coord);
 
-	if (icon_index >= 0) {
+	if (icon_index >= 0 && icon_index < app_config.count) {
 		if (verbose) {
 			printf("[DBG] Scroll %s on icon/app #%d '%s' (value=%.2f)\n",
 				direction, icon_index, app_config.apps[icon_index]->name,
 				scroll_value);
+		}
+	} else if (app_config.show_volume && icon_index == app_config.count) {
+		if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
+			if (verbose)
+				printf("[DBG] Scroll %s on volume widget (value=%.2f)\n",
+					direction, scroll_value);
+			volume_handle_scroll(scroll_value < 0);
+			volume_repaint_tile(surface);
 		}
 	} else {
 		if (verbose) {
@@ -285,15 +385,22 @@ pointer_axis_discrete(void *data, struct wl_pointer *wl_pointer, uint32_t axis,
 	}
 
 	// Determine which icon is under the pointer
-	if (app_config.icon_size > 0) {
-		icon_index = (int)(current_pointer_x / app_config.icon_size);
-		if (icon_index < 0 || icon_index >= app_config.count)
-			icon_index = -1;
-	}
+	int is_vertical_d = (app_config.position == POSITION_LEFT ||
+		app_config.position == POSITION_RIGHT);
+	double coord_d = is_vertical_d ? current_pointer_y : current_pointer_x;
+	icon_index = get_icon_at_position(coord_d);
 
-	if (icon_index >= 0) {
+	if (icon_index >= 0 && icon_index < app_config.count) {
 		printf("[DBG] Scroll %s on icon/app #%d '%s' (steps=%d)\n", direction,
 			icon_index, app_config.apps[icon_index]->name, abs(discrete));
+	} else if (app_config.show_volume && icon_index == app_config.count) {
+		if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
+			if (verbose)
+				printf("[DBG] Scroll %s on volume widget (steps=%d)\n",
+					direction, abs(discrete));
+			volume_handle_scroll(discrete < 0);
+			volume_repaint_tile(surface);
+		}
 	} else {
 		if (verbose) {
 			printf("[DBG] Scroll %s at (%.2f, %.2f) (steps=%d)\n", direction,

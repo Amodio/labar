@@ -1,4 +1,4 @@
-# Documentation build configuration for labar
+# Documentation (man page) build configuration for labar
 
 scdoc = find_program('scdoc', required: false)
 
@@ -9,7 +9,7 @@ if scdoc.found()
     output: 'labar.1',
     command: ['sh', '-c', scdoc.full_path() + ' < @INPUT@'],
     install: true,
-    install_dir: join_paths(get_option('mandir'), 'man1'),
+    install_dir: get_option('prefix') / get_option('mandir') / 'man1',
     capture: true,
   )
 else

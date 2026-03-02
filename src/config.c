@@ -686,6 +686,12 @@ parse_config_file(FILE *fp)
 					cfg.layer = LAYER_TOP; // Default
 				if (verbose >= 2)
 					printf("[DBG²]   layer: %s\n", value);
+			} else if (strcmp(key, "show-volume") == 0) {
+				cfg.show_volume =
+					(strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+				if (verbose >= 2)
+					printf("[DBG²]   show-volume: %s\n",
+						cfg.show_volume ? "true" : "false");
 			}
 			continue;
 		}
@@ -918,6 +924,10 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp, "#   top (default):    above normal windows\n");
 	fprintf(fp, "#   overlay:          on top of everything\n");
 	fprintf(fp, "layer=top\n");
+	fprintf(fp, "# show-volume: append a volume icon at the end of the bar\n");
+	fprintf(fp, "#   true:  show the volume widget (default)\n");
+	fprintf(fp, "#   false: no volume widget\n");
+	fprintf(fp, "show-volume=true\n");
 	fprintf(fp, "\n[apps]\n");
 
 	int written = 0;

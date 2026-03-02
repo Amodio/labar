@@ -63,6 +63,22 @@ typedef struct {
 	int icon_spacing;	// Spacing between icons in pixels (default: 0)
 	Position position;	// Bar position on screen (default: bottom)
 	Layer layer;		// Layer-shell layer (default: bottom)
+
+	// ---------------------------------------------------------------------------
+	// Volume widget
+	//
+	// When show_volume is non-zero an extra icon slot is appended to the bar
+	// that displays the current ALSA PCM volume level.  The slot uses the PNG
+	// images from /usr/share/pixmaps/labar/ and overlays the volume percentage
+	// as a text label (respecting label_mode / label_color / label_size).
+	//
+	// Mouse bindings for the volume slot:
+	//   Left-click   : amixer -q sset PCM toggle   (mute / unmute)
+	//   Right-click  : foot -e alsamixer            (open full mixer)
+	//   Scroll-up    : amixer -q sset PCM 4%+       (raise by 4 %)
+	//   Scroll-down  : amixer -q sset PCM 4%-       (lower by 4 %)
+	// ---------------------------------------------------------------------------
+	int show_volume; // 1 = append volume icon, 0 = disabled (default: 0)
 } Config;
 
 // List all valid applications from /usr/share/applications/*.desktop

@@ -16,6 +16,7 @@
 #include "config.h"
 #include "exec.h"
 #include "seat.h"
+#include "volume.h"
 #include "wlr-layer-shell-unstable-v1-protocol.h"
 
 // Global verbose flag for debug output (0=none, 1=normal, 2=extra)
@@ -77,8 +78,9 @@ get_icon_at_position(double coord)
 
 	// Each icon occupies (icon_size + spacing) pixels, except the last icon
 	// which doesn't have spacing after it
+	int total_count = app_config.count + (app_config.show_volume ? 1 : 0);
 	int pos = 0;
-	for (int i = 0; i < app_config.count; i++) {
+	for (int i = 0; i < total_count; i++) {
 		int icon_end = pos + icon_size;
 		if (coord >= pos && coord < icon_end)
 			return i;
@@ -94,7 +96,8 @@ get_icon_at_position(double coord)
 int
 get_offset_for_icon(int icon_index)
 {
-	if (icon_index < 0 || icon_index >= app_config.count)
+	int total_count = app_config.count + (app_config.show_volume ? 1 : 0);
+	if (icon_index < 0 || icon_index >= total_count)
 		return 0;
 
 	int icon_size = app_config.icon_size;
@@ -418,6 +421,34 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 					y_offset += icon_size + icon_spacing;
 				}
 			}
+
+			// Draw volume widget tile if enabled
+			if (app_config.show_volume) {
+				int percent = 0, muted = 0;
+				volume_get_info(&percent, &muted);
+
+				uint32_t *tile_data = malloc(icon_size * icon_size * 4);
+				if (tile_data) {
+					memset(tile_data, 0, icon_size * icon_size * 4);
+					draw_icon(volume_get_icon_path(percent, muted), tile_data,
+						icon_size, icon_size);
+
+					if (app_config.label_mode == LABEL_MODE_ALWAYS) {
+						char label[16];
+						volume_get_label(label, sizeof(label), percent, muted);
+						int baseline = icon_size - app_config.label_offset;
+						draw_text(tile_data, icon_size, icon_size, label,
+							baseline, app_config.label_color);
+					}
+
+					for (int ty = 0; ty < icon_size; ty++) {
+						uint32_t *src = tile_data + (ty * icon_size);
+						uint32_t *dst = pixels + ((y_offset + ty) * surf_width);
+						memcpy(dst, src, icon_size * 4);
+					}
+					free(tile_data);
+				}
+			}
 		} else {
 			// Draw each application icon horizontally (left to right)
 			int x_offset = 0;
@@ -464,6 +495,34 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 
 					free(text_overlay);
 					x_offset += icon_size + icon_spacing;
+				}
+			}
+
+			// Draw volume widget tile if enabled
+			if (app_config.show_volume) {
+				int percent = 0, muted = 0;
+				volume_get_info(&percent, &muted);
+
+				uint32_t *tile_data = malloc(icon_size * icon_size * 4);
+				if (tile_data) {
+					memset(tile_data, 0, icon_size * icon_size * 4);
+					draw_icon(volume_get_icon_path(percent, muted), tile_data,
+						icon_size, icon_size);
+
+					if (app_config.label_mode == LABEL_MODE_ALWAYS) {
+						char label[16];
+						volume_get_label(label, sizeof(label), percent, muted);
+						int baseline = icon_size - app_config.label_offset;
+						draw_text(tile_data, icon_size, icon_size, label,
+							baseline, app_config.label_color);
+					}
+
+					for (int ty = 0; ty < icon_size; ty++) {
+						uint32_t *src = tile_data + (ty * icon_size);
+						uint32_t *dst = pixels + (ty * surf_width) + x_offset;
+						memcpy(dst, src, icon_size * 4);
+					}
+					free(tile_data);
 				}
 			}
 		}
@@ -610,14 +669,15 @@ main(int argc, char *argv[])
 	surface = wl_compositor_create_surface(compositor);
 
 	// Calculate bar dimensions based on number of icons and spacing
-	int icon_span = app_config.count * app_config.icon_size +
-		(app_config.count - 1) * app_config.icon_spacing;
+	int total_count = app_config.count + (app_config.show_volume ? 1 : 0);
+	int icon_span = total_count * app_config.icon_size +
+		(total_count > 1 ? (total_count - 1) * app_config.icon_spacing : 0);
 	int icon_size_single = app_config.icon_size;
 
 	if (verbose) {
 		printf("[DBG] Bar dimensions: %d icons x %dpx each + %dpx spacing = "
 			   "%d total\n",
-			app_config.count, app_config.icon_size, app_config.icon_spacing,
+			total_count, app_config.icon_size, app_config.icon_spacing,
 			icon_span);
 	}
 
