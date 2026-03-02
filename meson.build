@@ -1,5 +1,5 @@
 project('labar', 'c',
-  version : '0.4.0',
+  version: '0.4.0',
   default_options: ['c_std=c11', 'prefix=/usr']
 )
 
@@ -42,4 +42,5 @@ executable(
     '-DVERSION="' + meson.project_name() + ' ' + meson.project_version() + '"',
     '-DVOLUME_PIXMAP_DIR="' + pixmap_dir + '"',
     ],
+  install: true
 )
