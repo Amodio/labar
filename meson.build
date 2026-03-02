@@ -1,17 +1,17 @@
 project('labar', 'c',
-  version : '0.3.0',
+  version : '0.4.0',
   default_options: ['c_std=c11', 'prefix=/usr']
 )
 
 # Wayland dependencies
 wayland_client = dependency('wayland-client')
 wayland_protocols = dependency('wayland-protocols')
-
 # Cairo & librsvg for SVG icon rendering
 cairo_dep = dependency('cairo')
 librsvg_dep = dependency('librsvg-2.0')
 # ALSA for volume control
 alsa_dep = dependency('alsa')
+
 # Build protocols code (generated from XML)
 subdir('protocols')
 
