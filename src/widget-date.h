@@ -33,7 +33,7 @@
 
 // Default strftime(3) format strings
 #define WIDGET_DATE_DATE_FORMAT "%a %d %B" // e.g. "Tue 03 March"
-#define WIDGET_DATE_TIME_FORMAT "%H:%M" // e.g. "14:37"
+#define WIDGET_DATE_TIME_FORMAT "%H:%M"	   // e.g. "14:37"
 
 // Default visual properties (used when config fields are 0 / NULL)
 #define WIDGET_DATE_DATE_COLOR 0xFFFFFFFF // opaque white
