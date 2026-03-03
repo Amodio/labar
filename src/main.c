@@ -5,18 +5,22 @@
 #include <getopt.h>
 #include <librsvg/rsvg.h>
 #include <linux/input-event-codes.h>
+#include <locale.h>
+#include <poll.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <time.h>
 #include <unistd.h>
 #include <wayland-client.h>
 #include "cache.h"
 #include "config.h"
 #include "exec.h"
 #include "seat.h"
-#include "volume.h"
+#include "widget-date.h"
+#include "widget-volume.h"
 #include "wlr-layer-shell-unstable-v1-protocol.h"
 
 // Global verbose flag for debug output (0=none, 1=normal, 2=extra)
@@ -56,6 +60,33 @@ double current_pointer_y = 0.0;
 int last_hovered_icon = -1;
 
 // ---------------------------------------------------------------------------
+// get_total_widget_count
+//
+// Returns the total number of icon slots: apps + optional volume + optional
+// date widgets.
+// ---------------------------------------------------------------------------
+static int
+get_total_widget_count(void)
+{
+	return app_config.count + (app_config.show_volume ? 1 : 0) +
+		(app_config.show_date ? 1 : 0);
+}
+
+// ---------------------------------------------------------------------------
+// get_date_slot_index
+//
+// Returns the slot index of the date widget, or -1 if disabled.
+// The date widget is always the last slot.
+// ---------------------------------------------------------------------------
+int
+get_date_slot_index(void)
+{
+	if (!app_config.show_date)
+		return -1;
+	return app_config.count + (app_config.show_volume ? 1 : 0);
+}
+
+// ---------------------------------------------------------------------------
 // get_icon_at_position
 //
 // Calculate which icon (if any) is at the given coordinate.
@@ -65,7 +96,8 @@ int last_hovered_icon = -1;
 // Parameters:
 //   coord – horizontal (x) or vertical (y) coordinate in pixels
 //
-// Returns the icon index (0 to count-1) or -1 if no icon is at that position
+// Returns the icon index (0 to total_count-1) or -1 if no icon is at that
+// position.
 // ---------------------------------------------------------------------------
 int
 get_icon_at_position(double coord)
@@ -75,16 +107,20 @@ get_icon_at_position(double coord)
 
 	int icon_size = app_config.icon_size;
 	int spacing = app_config.icon_spacing;
+	int date_slot = app_config.show_date ?
+		(app_config.count + (app_config.show_volume ? 1 : 0)) :
+		-1;
+	int total_count = get_total_widget_count();
 
-	// Each icon occupies (icon_size + spacing) pixels, except the last icon
-	// which doesn't have spacing after it
-	int total_count = app_config.count + (app_config.show_volume ? 1 : 0);
 	int pos = 0;
 	for (int i = 0; i < total_count; i++) {
-		int icon_end = pos + icon_size;
-		if (coord >= pos && coord < icon_end)
+		int slot_size = (i == date_slot && app_config.date_tile_width > 0) ?
+			app_config.date_tile_width :
+			icon_size;
+		int slot_end = pos + slot_size;
+		if (coord >= pos && coord < slot_end)
 			return i;
-		pos = icon_end + spacing;
+		pos = slot_end + spacing;
 	}
 
 	return -1;
@@ -96,13 +132,24 @@ get_icon_at_position(double coord)
 int
 get_offset_for_icon(int icon_index)
 {
-	int total_count = app_config.count + (app_config.show_volume ? 1 : 0);
+	int total_count = get_total_widget_count();
 	if (icon_index < 0 || icon_index >= total_count)
 		return 0;
 
 	int icon_size = app_config.icon_size;
 	int spacing = app_config.icon_spacing;
-	return icon_index * (icon_size + spacing);
+	int date_slot = app_config.show_date ?
+		(app_config.count + (app_config.show_volume ? 1 : 0)) :
+		-1;
+
+	int pos = 0;
+	for (int i = 0; i < icon_index; i++) {
+		int slot_size = (i == date_slot && app_config.date_tile_width > 0) ?
+			app_config.date_tile_width :
+			icon_size;
+		pos += slot_size + spacing;
+	}
+	return pos;
 }
 
 // ---------------------------------------------------------------------------
@@ -343,6 +390,109 @@ draw_icon(const char *path, uint32_t *data, int width, int height)
 }
 
 // ---------------------------------------------------------------------------
+// draw_tile
+//
+// Helper: allocate a zeroed icon_size² tile, call draw_icon() + optionally
+// draw_text(), then blit it into the main pixel buffer at the correct offset.
+// Frees the tile when done.
+//
+// Parameters:
+//   icon_path  – path passed to draw_icon()
+//   label      – text to overlay, or NULL / "" to skip
+//   slot_index – index used to calculate the blit offset
+//   is_vertical – non-zero for LEFT/RIGHT bar orientations
+// ---------------------------------------------------------------------------
+static void
+draw_tile(const char *icon_path, const char *label, int slot_index,
+	int is_vertical)
+{
+	int icon_size = app_config.icon_size;
+	int offset = get_offset_for_icon(slot_index);
+
+	uint32_t *tile = malloc(icon_size * icon_size * 4);
+	if (!tile)
+		return;
+	memset(tile, 0, icon_size * icon_size * 4);
+
+	draw_icon(icon_path, tile, icon_size, icon_size);
+
+	if (label && label[0] != '\0') {
+		int baseline = icon_size - app_config.label_offset;
+		draw_text(tile, icon_size, icon_size, label, baseline,
+			app_config.label_color);
+	}
+
+	if (is_vertical) {
+		for (int ty = 0; ty < icon_size; ty++) {
+			uint32_t *src = tile + ty * icon_size;
+			uint32_t *dst = pixels + (offset + ty) * surf_width;
+			memcpy(dst, src, icon_size * 4);
+		}
+	} else {
+		for (int ty = 0; ty < icon_size; ty++) {
+			uint32_t *src = tile + ty * icon_size;
+			uint32_t *dst = pixels + ty * surf_width + offset;
+			memcpy(dst, src, icon_size * 4);
+		}
+	}
+
+	free(tile);
+}
+
+// ---------------------------------------------------------------------------
+// date_repaint_tile
+//
+// Re-renders the date/time icon slot after a minute boundary is crossed.
+// Called from the main dispatch loop via date_widget_needs_repaint().
+// ---------------------------------------------------------------------------
+void
+date_repaint_tile(struct wl_surface *wl_surf)
+{
+	if (!buffer || !app_config.show_date)
+		return;
+
+	int is_vertical = (app_config.position == POSITION_LEFT ||
+		app_config.position == POSITION_RIGHT);
+	int slot = get_date_slot_index();
+	int offset = get_offset_for_icon(slot);
+	int icon_size = app_config.icon_size;
+	// Along-bar dimension may be wider than icon_size to fit the text;
+	// the cross-bar dimension is always icon_size.
+	int tile_w =
+		app_config.date_tile_width > 0 ? app_config.date_tile_width : icon_size;
+	int tile_h = icon_size;
+
+	uint32_t *tile = malloc(tile_w * tile_h * 4);
+	if (!tile)
+		return;
+
+	date_draw_tile(tile, tile_w, tile_h, &app_config);
+
+	if (is_vertical) {
+		// Vertical bar: offset is along Y; tile_w is the height, tile_h is the
+		// width
+		for (int ty = 0; ty < tile_w; ty++) {
+			uint32_t *src = tile + ty * tile_h;
+			uint32_t *dst = pixels + (offset + ty) * surf_width;
+			memcpy(dst, src, tile_h * 4);
+		}
+	} else {
+		// Horizontal bar: offset is along X; tile_w is the width, tile_h is the
+		// height
+		for (int ty = 0; ty < tile_h; ty++) {
+			uint32_t *src = tile + ty * tile_w;
+			uint32_t *dst = pixels + ty * surf_width + offset;
+			memcpy(dst, src, tile_w * 4);
+		}
+	}
+	free(tile);
+
+	wl_surface_attach(wl_surf, buffer, 0, 0);
+	wl_surface_damage(wl_surf, 0, 0, surf_width, surf_height);
+	wl_surface_commit(wl_surf);
+}
+
+// ---------------------------------------------------------------------------
 // Layer-surface event listeners
 // ---------------------------------------------------------------------------
 
@@ -427,26 +577,35 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 				int percent = 0, muted = 0;
 				volume_get_info(&percent, &muted);
 
-				uint32_t *tile_data = malloc(icon_size * icon_size * 4);
-				if (tile_data) {
-					memset(tile_data, 0, icon_size * icon_size * 4);
-					draw_icon(volume_get_icon_path(percent, muted), tile_data,
-						icon_size, icon_size);
+				char label[16] = {0};
+				if (app_config.label_mode == LABEL_MODE_ALWAYS)
+					volume_get_label(label, sizeof(label), percent, muted);
 
-					if (app_config.label_mode == LABEL_MODE_ALWAYS) {
-						char label[16];
-						volume_get_label(label, sizeof(label), percent, muted);
-						int baseline = icon_size - app_config.label_offset;
-						draw_text(tile_data, icon_size, icon_size, label,
-							baseline, app_config.label_color);
-					}
+				draw_tile(volume_get_icon_path(percent, muted), label,
+					app_config.count, is_vertical);
 
-					for (int ty = 0; ty < icon_size; ty++) {
-						uint32_t *src = tile_data + (ty * icon_size);
-						uint32_t *dst = pixels + ((y_offset + ty) * surf_width);
-						memcpy(dst, src, icon_size * 4);
+				y_offset += icon_size + icon_spacing;
+			}
+
+			// Draw date widget tile if enabled
+			if (app_config.show_date) {
+				int slot = get_date_slot_index();
+				int offset = get_offset_for_icon(slot);
+				int tile_w = app_config.date_tile_width > 0 ?
+					app_config.date_tile_width :
+					icon_size;
+				int tile_h = icon_size;
+				uint32_t *tile = malloc(tile_w * tile_h * 4);
+				if (tile) {
+					date_draw_tile(tile, tile_w, tile_h, &app_config);
+					// Vertical bar: along-bar = Y, tile_w is the height of the
+					// slot
+					for (int ty = 0; ty < tile_w; ty++) {
+						uint32_t *src = tile + ty * tile_h;
+						uint32_t *dst = pixels + (offset + ty) * surf_width;
+						memcpy(dst, src, tile_h * 4);
 					}
-					free(tile_data);
+					free(tile);
 				}
 			}
 		} else {
@@ -503,26 +662,35 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 				int percent = 0, muted = 0;
 				volume_get_info(&percent, &muted);
 
-				uint32_t *tile_data = malloc(icon_size * icon_size * 4);
-				if (tile_data) {
-					memset(tile_data, 0, icon_size * icon_size * 4);
-					draw_icon(volume_get_icon_path(percent, muted), tile_data,
-						icon_size, icon_size);
+				char label[16] = {0};
+				if (app_config.label_mode == LABEL_MODE_ALWAYS)
+					volume_get_label(label, sizeof(label), percent, muted);
 
-					if (app_config.label_mode == LABEL_MODE_ALWAYS) {
-						char label[16];
-						volume_get_label(label, sizeof(label), percent, muted);
-						int baseline = icon_size - app_config.label_offset;
-						draw_text(tile_data, icon_size, icon_size, label,
-							baseline, app_config.label_color);
-					}
+				draw_tile(volume_get_icon_path(percent, muted), label,
+					app_config.count, is_vertical);
 
-					for (int ty = 0; ty < icon_size; ty++) {
-						uint32_t *src = tile_data + (ty * icon_size);
-						uint32_t *dst = pixels + (ty * surf_width) + x_offset;
-						memcpy(dst, src, icon_size * 4);
+				x_offset += icon_size + icon_spacing;
+			}
+
+			// Draw date widget tile if enabled
+			if (app_config.show_date) {
+				int slot = get_date_slot_index();
+				int offset = get_offset_for_icon(slot);
+				int tile_w = app_config.date_tile_width > 0 ?
+					app_config.date_tile_width :
+					icon_size;
+				int tile_h = icon_size;
+				uint32_t *tile = malloc(tile_w * tile_h * 4);
+				if (tile) {
+					date_draw_tile(tile, tile_w, tile_h, &app_config);
+					// Horizontal bar: along-bar = X, tile_w is the width of the
+					// slot
+					for (int ty = 0; ty < tile_h; ty++) {
+						uint32_t *src = tile + ty * tile_w;
+						uint32_t *dst = pixels + ty * surf_width + offset;
+						memcpy(dst, src, tile_w * 4);
 					}
-					free(tile_data);
+					free(tile);
 				}
 			}
 		}
@@ -594,6 +762,9 @@ static const struct wl_registry_listener registry_listener = {
 int
 main(int argc, char *argv[])
 {
+	// Apply the user's locale so strftime() produces localised day/month names
+	setlocale(LC_TIME, "");
+
 	// Parse command-line arguments
 	int opt;
 	static struct option long_options[] = {{"verbose", no_argument, 0, 'v'},
@@ -625,6 +796,11 @@ main(int argc, char *argv[])
 		return 1;
 	}
 
+	// Compute the date widget tile size now that font sizes are known.
+	// This must happen before any layout or bar-size calculation.
+	if (app_config.show_date)
+		app_config.date_tile_width = date_compute_tile_size(&app_config);
+
 	if (verbose) {
 		printf("[DBG] Loaded configuration with %d application(s):\n",
 			app_config.count);
@@ -636,6 +812,12 @@ main(int argc, char *argv[])
 				printf("[DBG]       terminal: true\n");
 			printf("[DBG]       exec: %s\n", app_config.apps[i]->exec);
 		}
+		if (app_config.show_date)
+			printf("[DBG] Date widget enabled (date: '%s' / time: '%s')\n",
+				app_config.date_date_format ? app_config.date_date_format :
+											  "%a %d",
+				app_config.date_time_format ? app_config.date_time_format :
+											  "%H:%M");
 	}
 
 	// Connect to the Wayland compositor
@@ -668,17 +850,26 @@ main(int argc, char *argv[])
 	// Create a plain Wayland surface to host our layer surface
 	surface = wl_compositor_create_surface(compositor);
 
-	// Calculate bar dimensions based on number of icons and spacing
-	int total_count = app_config.count + (app_config.show_volume ? 1 : 0);
-	int icon_span = total_count * app_config.icon_size +
-		(total_count > 1 ? (total_count - 1) * app_config.icon_spacing : 0);
-	int icon_size_single = app_config.icon_size;
+	// Calculate bar dimensions.
+	// Regular slots each occupy icon_size; the date slot uses date_tile_width.
+	int total_count = get_total_widget_count();
+	int date_slot_idx = get_date_slot_index();
+	int icon_span = 0;
+	for (int i = 0; i < total_count; i++) {
+		if (i > 0)
+			icon_span += app_config.icon_spacing;
+		icon_span += (i == date_slot_idx && app_config.date_tile_width > 0) ?
+			app_config.date_tile_width :
+			app_config.icon_size;
+	}
+	// The bar cross-dimension (height for horizontal bar, width for vertical)
+	// is always icon_size — font size only affects the slot's width, not the
+	// bar's thickness.
+	int cross_size = app_config.icon_size;
 
 	if (verbose) {
-		printf("[DBG] Bar dimensions: %d icons x %dpx each + %dpx spacing = "
-			   "%d total\n",
-			total_count, app_config.icon_size, app_config.icon_spacing,
-			icon_span);
+		printf("[DBG] Bar dimensions: %d slot(s), span=%d px, cross=%d px\n",
+			total_count, icon_span, cross_size);
 	}
 
 	// Map the Config layer enum to the Wayland layer-shell layer value
@@ -729,33 +920,29 @@ main(int argc, char *argv[])
 	// Anchor the bar and set dimensions based on position
 	uint32_t anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM; // Default anchor
 	int bar_width = icon_span;
-	int bar_height_actual = icon_size_single;
+	int bar_height_actual = cross_size;
 
 	switch (app_config.position) {
 	case POSITION_TOP:
-		// Horizontal bar at top
 		anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP;
 		bar_width = icon_span;
-		bar_height_actual = icon_size_single;
+		bar_height_actual = cross_size;
 		break;
 	case POSITION_LEFT:
-		// Vertical bar on left
 		anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT;
-		bar_width = icon_size_single;
+		bar_width = cross_size;
 		bar_height_actual = icon_span;
 		break;
 	case POSITION_RIGHT:
-		// Vertical bar on right
 		anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
-		bar_width = icon_size_single;
+		bar_width = cross_size;
 		bar_height_actual = icon_span;
 		break;
 	case POSITION_BOTTOM:
 	default:
-		// Horizontal bar at bottom
 		anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
 		bar_width = icon_span;
-		bar_height_actual = icon_size_single;
+		bar_height_actual = cross_size;
 		break;
 	}
 
@@ -773,8 +960,103 @@ main(int argc, char *argv[])
 	// Initial commit triggers the configure event from the compositor
 	wl_surface_commit(surface);
 
-	// Dispatch Wayland events until the connection is lost or we exit
-	while (wl_display_dispatch(display) != -1) {
+	// Persistent state for the date widget repaint timer.
+	// Initialised to -1 so the first call to date_widget_needs_repaint()
+	// always triggers an immediate repaint.
+	int date_last_minute = -1;
+	int date_last_second = -1;
+
+	// Determine the required poll timeout from the configured time format.
+	//
+	// If the format contains a seconds-level directive (%S, %T, %X, %c, %r)
+	// we must refresh every second.  Otherwise we only need to wake up once
+	// per minute, so we sleep until the next minute boundary (≤ 60 s) to
+	// avoid unnecessary wakeups.
+	//
+	// A NULL / empty format falls back to the default "%H:%M" (minute-level).
+	const char *time_fmt =
+		(app_config.show_date && app_config.date_time_format &&
+			app_config.date_time_format[0]) ?
+		app_config.date_time_format :
+		WIDGET_DATE_TIME_FORMAT;
+
+	int needs_seconds = (strstr(time_fmt, "%S") || strstr(time_fmt, "%T") ||
+		strstr(time_fmt, "%X") || strstr(time_fmt, "%c") ||
+		strstr(time_fmt, "%r"));
+
+	if (verbose && app_config.show_date)
+		printf("[DBG] Date widget refresh: %s\n",
+			needs_seconds ? "every second" : "every minute");
+
+	// Main event loop.
+	//
+	// We need to repaint the date tile independently of Wayland input events.
+	// wl_display_dispatch() blocks until an event arrives, so we use a
+	// poll()-based loop instead:
+	//
+	//   1. Flush outgoing messages.
+	//   2. Dispatch already-queued incoming events (non-blocking).
+	//   3. Check whether the date tile needs a repaint.
+	//   4. poll() on the Wayland fd with a timeout calibrated to the next
+	//      expected change in the displayed time string:
+	//        - seconds format → 200 ms  (snappy, handles sub-second drift)
+	//        - minutes format → ms until the next whole minute + 50 ms slop
+	struct pollfd pfd = {
+		.fd = wl_display_get_fd(display),
+		.events = POLLIN,
+	};
+
+	while (1) {
+		// 1. Flush pending outgoing messages
+		if (wl_display_flush(display) < 0)
+			break;
+
+		// 2. Dispatch all already-queued events without blocking
+		if (wl_display_dispatch_pending(display) < 0)
+			break;
+
+		// 3. Repaint date tile if the displayed string has changed
+		if (app_config.show_date) {
+			int needs_repaint = needs_seconds ?
+				date_widget_needs_repaint_seconds(&date_last_second) :
+				date_widget_needs_repaint(&date_last_minute);
+			if (needs_repaint) {
+				date_repaint_tile(surface);
+				// Flush immediately — the repaint queues wl_surface_commit
+				// which must reach the compositor now, not on the next
+				// iteration (which may be up to a minute away).
+				wl_display_flush(display);
+			}
+		}
+
+		// 4. Compute the timeout for this iteration
+		int timeout_ms;
+		if (!app_config.show_date) {
+			// No date widget — block indefinitely on Wayland events
+			timeout_ms = -1;
+		} else if (needs_seconds) {
+			// Wake up every 200 ms so we never miss a second tick
+			timeout_ms = 200;
+		} else {
+			// Sleep until 50 ms after the next whole minute
+			struct timespec ts;
+			clock_gettime(CLOCK_REALTIME, &ts);
+			int secs_into_minute = (int)(ts.tv_sec % 60);
+			int secs_remaining = 60 - secs_into_minute;
+			int ms_remaining = secs_remaining * 1000 -
+				(int)(ts.tv_nsec / 1000000) + 50; /* slop */
+			timeout_ms = ms_remaining > 0 ? ms_remaining : 50;
+		}
+
+		int ret = poll(&pfd, 1, timeout_ms);
+		if (ret < 0)
+			break;
+		if (ret > 0) {
+			// Data available — read and dispatch it
+			if (wl_display_dispatch(display) < 0)
+				break;
+		}
+		// ret == 0 → timeout, loop back to repaint and recalculate
 	}
 
 	cache_free();

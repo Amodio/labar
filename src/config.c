@@ -469,6 +469,10 @@ free_config(Config *cfg)
 	free_applications(cfg->apps, cfg->count);
 	cfg->apps = NULL;
 	cfg->count = 0;
+	free(cfg->date_date_format);
+	cfg->date_date_format = NULL;
+	free(cfg->date_time_format);
+	cfg->date_time_format = NULL;
 }
 
 // Check if the config file exists
@@ -504,6 +508,14 @@ parse_config_file(FILE *fp)
 	cfg.icon_spacing = 0;			   // No spacing between icons by default
 	cfg.position = POSITION_BOTTOM;	   // Bar at the bottom by default
 	cfg.layer = LAYER_TOP;			   // Layer-shell top layer by default
+	cfg.show_volume = 0;			   // Volume widget off by default
+	cfg.show_date = 0;				   // Date widget off by default
+	cfg.date_date_format = NULL;	   // Falls back to WIDGET_DATE_DATE_FORMAT
+	cfg.date_date_color = 0;		   // Falls back to WIDGET_DATE_DATE_COLOR
+	cfg.date_date_size = 0;			   // Falls back to WIDGET_DATE_DATE_SIZE
+	cfg.date_time_format = NULL;	   // Falls back to WIDGET_DATE_TIME_FORMAT
+	cfg.date_time_color = 0;		   // Falls back to WIDGET_DATE_TIME_COLOR
+	cfg.date_time_size = 0;			   // Falls back to WIDGET_DATE_TIME_SIZE
 	if (!cfg.apps)
 		return cfg;
 
@@ -692,6 +704,54 @@ parse_config_file(FILE *fp)
 				if (verbose >= 2)
 					printf("[DBG²]   show-volume: %s\n",
 						cfg.show_volume ? "true" : "false");
+			} else if (strcmp(key, "show-date") == 0) {
+				cfg.show_date =
+					(strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+				if (verbose >= 2)
+					printf("[DBG²]   show-date: %s\n",
+						cfg.show_date ? "true" : "false");
+			} else if (strcmp(key, "date-date-format") == 0) {
+				free(cfg.date_date_format);
+				cfg.date_date_format = strdup(value);
+				if (verbose >= 2)
+					printf("[DBG²]   date-date-format: %s\n",
+						cfg.date_date_format);
+			} else if (strcmp(key, "date-date-color") == 0) {
+				const char *hex = value;
+				if (hex[0] == '#')
+					hex++;
+				unsigned long parsed = strtoul(hex, NULL, 16);
+				cfg.date_date_color = (strlen(hex) <= 6) ?
+					(0xFF000000 | (unsigned int)parsed) :
+					(unsigned int)parsed;
+				if (verbose >= 2)
+					printf("[DBG²]   date-date-color: 0x%08X\n",
+						cfg.date_date_color);
+			} else if (strcmp(key, "date-date-size") == 0) {
+				cfg.date_date_size = atoi(value);
+				if (verbose >= 2)
+					printf("[DBG²]   date-date-size: %d\n", cfg.date_date_size);
+			} else if (strcmp(key, "date-time-format") == 0) {
+				free(cfg.date_time_format);
+				cfg.date_time_format = strdup(value);
+				if (verbose >= 2)
+					printf("[DBG²]   date-time-format: %s\n",
+						cfg.date_time_format);
+			} else if (strcmp(key, "date-time-color") == 0) {
+				const char *hex = value;
+				if (hex[0] == '#')
+					hex++;
+				unsigned long parsed = strtoul(hex, NULL, 16);
+				cfg.date_time_color = (strlen(hex) <= 6) ?
+					(0xFF000000 | (unsigned int)parsed) :
+					(unsigned int)parsed;
+				if (verbose >= 2)
+					printf("[DBG²]   date-time-color: 0x%08X\n",
+						cfg.date_time_color);
+			} else if (strcmp(key, "date-time-size") == 0) {
+				cfg.date_time_size = atoi(value);
+				if (verbose >= 2)
+					printf("[DBG²]   date-time-size: %d\n", cfg.date_time_size);
 			}
 			continue;
 		}
@@ -928,6 +988,22 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp, "#   true:  show the volume widget (default)\n");
 	fprintf(fp, "#   false: no volume widget\n");
 	fprintf(fp, "show-volume=true\n");
+	fprintf(fp,
+		"# show-date: append a date/time text slot at the end of the bar\n");
+	fprintf(fp, "#   true:  show the date/time widget\n");
+	fprintf(fp, "#   false: no date/time widget (default)\n");
+	fprintf(fp, "show-date=true\n");
+	fprintf(fp, "# date/time widget — line 1 (date) style\n");
+	fprintf(fp,
+		"#   date-date-format: strftime(3) format, e.g. \"%%a %%d %%B\"\n");
+	fprintf(fp, "date-date-format=%%a %%d %%B\n");
+	fprintf(fp, "date-date-color=#68FF3A\n");
+	fprintf(fp, "date-date-size=16\n");
+	fprintf(fp, "# date/time widget — line 2 (time) style\n");
+	fprintf(fp, "#   date-time-format: strftime(3) format, e.g. \"%%H:%%M\"\n");
+	fprintf(fp, "date-time-format=%%H:%%M\n");
+	fprintf(fp, "date-time-color=#FF0000\n");
+	fprintf(fp, "date-time-size=32\n");
 	fprintf(fp, "\n[apps]\n");
 
 	int written = 0;

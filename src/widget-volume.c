@@ -1,6 +1,6 @@
 #define _GNU_SOURCE
 
-#include "volume.h"
+#include "widget-volume.h"
 #include "exec.h"
 
 #include <alsa/asoundlib.h>
@@ -162,9 +162,6 @@ volume_get_icon_path(int percent, int muted)
 {
 	if (muted)
 		return VOLUME_ICON_MUTED;
-
-	if (percent <= 0)
-		return VOLUME_ICON_OFF;
 
 	if (percent >= VOLUME_HIGH_THRESHOLD)
 		return VOLUME_ICON_HIGH;

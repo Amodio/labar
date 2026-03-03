@@ -79,6 +79,40 @@ typedef struct {
 	//   Scroll-down  : amixer -q sset PCM 4%-       (lower by 4 %)
 	// ---------------------------------------------------------------------------
 	int show_volume; // 1 = append volume icon, 0 = disabled (default: 0)
+
+	// ---------------------------------------------------------------------------
+	// Date / time widget
+	//
+	// When show_date is non-zero an extra text-only slot is appended to the
+	// bar (after the volume slot if show_volume is also enabled).  The slot
+	// renders two lines of text directly with Cairo — no PNG icon is required:
+	//
+	//   Line 1 (upper half) – date string  (date_date_format, default "%a %d")
+	//   Line 2 (lower half) – time string  (date_time_format, default "%H:%M")
+	//
+	// Config keys in [global]:
+	//   show-date          true / false                    (default: false)
+	//   date-date-format   strftime format for line 1      (default: "%a %d")
+	//   date-date-color    #RRGGBB[AA] for line 1          (default: #FFFFFF)
+	//   date-date-size     font size in pt for line 1      (default: 10)
+	//   date-time-format   strftime format for line 2      (default: "%H:%M")
+	//   date-time-color    #RRGGBB[AA] for line 2          (default: #FFFFFF)
+	//   date-time-size     font size in pt for line 2      (default: 14)
+	//
+	// The slot is display-only — no mouse bindings are registered.
+	// The tile is redrawn automatically once per minute.
+	// ---------------------------------------------------------------------------
+	int show_date;				  // 1 = append date/time slot, 0 = disabled
+	char *date_date_format;		  // strftime format for the date line (line 1)
+	unsigned int date_date_color; // ARGB color for the date line
+	int date_date_size;			  // font size in pt for the date line
+	char *date_time_format;		  // strftime format for the time line (line 2)
+	unsigned int date_time_color; // ARGB color for the time line
+	int date_time_size;			  // font size in pt for the time line
+	int date_tile_width; // computed tile width in pixels along the bar axis
+						 // (set by date_compute_tile_size() after load).
+						 // Height is always icon_size — the bar thickness
+						 // never changes.
 } Config;
 
 // List all valid applications from /usr/share/applications/*.desktop

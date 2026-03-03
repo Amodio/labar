@@ -30,7 +30,8 @@ executable(
   'src/exec.c',
   'src/seat.c',
   'src/cache.c',
-  'src/volume.c',
+  'src/widget-volume.c',
+  'src/widget-date.c',
   dependencies: [
     wayland_client,
     wl_protocols,
