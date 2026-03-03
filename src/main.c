@@ -997,11 +997,25 @@ main(int argc, char *argv[])
 
 	// Parse command-line arguments
 	int opt;
-	static struct option long_options[] = {{"verbose", no_argument, 0, 'v'},
-		{"version", no_argument, 0, 'V'}, {0, 0, 0, 0}};
+	static struct option long_options[] = {{"help", no_argument, 0, 'h'},
+		{"verbose", no_argument, 0, 'v'}, {"version", no_argument, 0, 'V'},
+		{0, 0, 0, 0}};
 
-	while ((opt = getopt_long(argc, argv, "vV", long_options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "hvV", long_options, NULL)) != -1) {
 		switch (opt) {
+		case 'h':
+			printf(
+				"Usage: %s [OPTIONS]\n"
+				"\n"
+				"Options:\n"
+				"  -h, --help       Show this help message and exit\n"
+				"  -v, --verbose    Increase verbosity (use up to 4 times)\n"
+				"  -V, --version    Print version and exit\n"
+				"\n"
+				"labar reads its configuration from:\n"
+				"  $XDG_CONFIG_HOME/labar/labar.cfg  (or ~/.config/labar/labar.cfg)\n",
+				argv[0]);
+			return 0;
 		case 'v':
 			verbose++;
 			break;
@@ -1009,7 +1023,8 @@ main(int argc, char *argv[])
 			printf("%s\n", VERSION);
 			return 0;
 		default:
-			fprintf(stderr, "Usage: %s [-v|--verbose] [-V|--version]\n",
+			fprintf(stderr,
+				"Usage: %s [-h|--help] [-v|--verbose] [-V|--version]\n",
 				argv[0]);
 			return 1;
 		}

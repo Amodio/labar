@@ -1012,8 +1012,8 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp, "show-volume=true\n");
 	fprintf(fp,
 		"# show-date: append a date/time text slot at the end of the bar\n");
-	fprintf(fp, "#   true:  show the date/time widget\n");
-	fprintf(fp, "#   false: no date/time widget (default)\n");
+	fprintf(fp, "#   true:  show the date/time widget (default)\n");
+	fprintf(fp, "#   false: no date/time widget\n");
 	fprintf(fp, "show-date=true\n");
 	fprintf(fp, "# date/time widget — line 1 (date) style\n");
 	fprintf(fp,
