@@ -39,7 +39,6 @@ trim_string(char *str)
 	return str;
 }
 
-// Parse a single .desktop file
 // Returns a DesktopEntry on success, NULL on failure
 static DesktopEntry *
 parse_desktop_file(const char *filepath)
@@ -516,6 +515,7 @@ parse_config_file(FILE *fp)
 	cfg.date_time_format = NULL;	   // Falls back to WIDGET_DATE_TIME_FORMAT
 	cfg.date_time_color = 0;		   // Falls back to WIDGET_DATE_TIME_COLOR
 	cfg.date_time_size = 0;			   // Falls back to WIDGET_DATE_TIME_SIZE
+	cfg.date_bg_color = 0x33000000;	   // dark, 80% transparent by default
 	if (!cfg.apps)
 		return cfg;
 
@@ -665,7 +665,8 @@ parse_config_file(FILE *fp)
 				if (strlen(hex) <= 6)
 					cfg.label_color = 0xFF000000 | (unsigned int)parsed;
 				else
-					cfg.label_color = (unsigned int)parsed;
+					cfg.label_color =
+						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
 				if (verbose >= 2)
 					printf("[DBG²]   label-color: 0x%08X\n", cfg.label_color);
 			} else if (strcmp(key, "label-offset") == 0) {
@@ -721,9 +722,11 @@ parse_config_file(FILE *fp)
 				if (hex[0] == '#')
 					hex++;
 				unsigned long parsed = strtoul(hex, NULL, 16);
-				cfg.date_date_color = (strlen(hex) <= 6) ?
-					(0xFF000000 | (unsigned int)parsed) :
-					(unsigned int)parsed;
+				if (strlen(hex) <= 6)
+					cfg.date_date_color = 0xFF000000 | (unsigned int)parsed;
+				else
+					cfg.date_date_color =
+						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
 				if (verbose >= 2)
 					printf("[DBG²]   date-date-color: 0x%08X\n",
 						cfg.date_date_color);
@@ -742,9 +745,11 @@ parse_config_file(FILE *fp)
 				if (hex[0] == '#')
 					hex++;
 				unsigned long parsed = strtoul(hex, NULL, 16);
-				cfg.date_time_color = (strlen(hex) <= 6) ?
-					(0xFF000000 | (unsigned int)parsed) :
-					(unsigned int)parsed;
+				if (strlen(hex) <= 6)
+					cfg.date_time_color = 0xFF000000 | (unsigned int)parsed;
+				else
+					cfg.date_time_color =
+						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
 				if (verbose >= 2)
 					printf("[DBG²]   date-time-color: 0x%08X\n",
 						cfg.date_time_color);
@@ -752,6 +757,21 @@ parse_config_file(FILE *fp)
 				cfg.date_time_size = atoi(value);
 				if (verbose >= 2)
 					printf("[DBG²]   date-time-size: %d\n", cfg.date_time_size);
+			} else if (strcmp(key, "date-bg-color") == 0) {
+				const char *hex = value;
+				if (hex[0] == '#')
+					hex++;
+				unsigned long parsed = strtoul(hex, NULL, 16);
+				if (strlen(hex) <= 6)
+					// #RRGGBB → 0xFFRRGGBB (fully opaque)
+					cfg.date_bg_color = 0xFF000000 | (unsigned int)parsed;
+				else
+					// #RRGGBBAA → swap to internal 0xAARRGGBB
+					cfg.date_bg_color =
+						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
+				if (verbose >= 2)
+					printf("[DBG²]   date-bg-color: 0x%08X\n",
+						cfg.date_bg_color);
 			}
 			continue;
 		}
@@ -1004,6 +1024,12 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp, "date-time-format=%%H:%%M\n");
 	fprintf(fp, "date-time-color=#FF0000\n");
 	fprintf(fp, "date-time-size=32\n");
+	fprintf(fp, "# date-bg-color: background color for the date/time tile\n");
+	fprintf(fp, "#   format: #RRGGBBAA (alpha in last byte)\n");
+	fprintf(fp, "#   e.g. #00000033 = black 80%% transparent (default)\n");
+	fprintf(fp, "#        #00000000 = fully transparent\n");
+	fprintf(fp, "#        #000000FF = fully opaque black\n");
+	fprintf(fp, "date-bg-color=#000000AA\n");
 	fprintf(fp, "\n[apps]\n");
 
 	int written = 0;

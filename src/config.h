@@ -98,6 +98,8 @@ typedef struct {
 	//   date-time-format   strftime format for line 2      (default: "%H:%M")
 	//   date-time-color    #RRGGBB[AA] for line 2          (default: #FFFFFF)
 	//   date-time-size     font size in pt for line 2      (default: 14)
+	//   date-bg-color      #RRGGBB[AA] tile background     (default: 0 =
+	//   transparent)
 	//
 	// The slot is display-only — no mouse bindings are registered.
 	// The tile is redrawn automatically once per minute.
@@ -109,6 +111,8 @@ typedef struct {
 	char *date_time_format;		  // strftime format for the time line (line 2)
 	unsigned int date_time_color; // ARGB color for the time line
 	int date_time_size;			  // font size in pt for the time line
+	unsigned int date_bg_color;	  // ARGB background color for the tile
+								  // 0 = fully transparent (default)
 	int date_tile_width; // computed tile width in pixels along the bar axis
 						 // (set by date_compute_tile_size() after load).
 						 // Height is always icon_size — the bar thickness

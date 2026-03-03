@@ -28,12 +28,14 @@ get_local_time(struct tm *tm_out)
 
 	time_t now = time(NULL);
 	if (now == (time_t)-1) {
-		fprintf(stderr, "[DATE] time() failed\n");
+		if (verbose >= 2)
+			fprintf(stderr, "[DATE] time() failed\n");
 		return -1;
 	}
 
 	if (!localtime_r(&now, tm_out)) {
-		fprintf(stderr, "[DATE] localtime_r() failed\n");
+		if (verbose >= 2)
+			fprintf(stderr, "[DATE] localtime_r() failed\n");
 		return -1;
 	}
 
@@ -51,7 +53,8 @@ format_time(char *buf, int buf_len, const char *fmt, const struct tm *t,
 		fmt = fallback;
 
 	if (strftime(buf, buf_len, fmt, t) == 0) {
-		fprintf(stderr, "[DATE] strftime failed for format '%s'\n", fmt);
+		if (verbose >= 2)
+			fprintf(stderr, "[DATE] strftime failed for format '%s'\n", fmt);
 		snprintf(buf, buf_len, "%s", fallback);
 	}
 }
@@ -146,7 +149,7 @@ date_compute_tile_size(const Config *cfg)
 		w = icon_size;
 
 	if (verbose >= 2)
-		printf("[DATE²] computed tile width: %d px  "
+		printf("[DATE] computed tile width: %d px  "
 			   "(date_w=%.1f time_w=%.1f)\n",
 			w, de.width, te.width);
 
@@ -199,8 +202,8 @@ date_draw_tile(uint32_t *data, int width, int height, const Config *cfg)
 		snprintf(time_str, sizeof(time_str), "%s", fallback_time);
 	}
 
-	if (verbose >= 3)
-		printf("[DATE³] tile %dx%d  date='%s'  time='%s'\n", width, height,
+	if (verbose >= 2)
+		printf("[DATE] tile %dx%d  date='%s'  time='%s'\n", width, height,
 			date_str, time_str);
 
 	// Set up Cairo surface over the pixel buffer
@@ -213,6 +216,18 @@ date_draw_tile(uint32_t *data, int width, int height, const Config *cfg)
 	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
 	cairo_set_source_rgba(cr, 0, 0, 0, 0);
 	cairo_paint(cr);
+
+	// Paint the background if one is configured (alpha > 0)
+	if (cfg && cfg->date_bg_color) {
+		unsigned int bg = cfg->date_bg_color;
+		double bg_a = ((bg >> 24) & 0xFF) / 255.0;
+		double bg_r = ((bg >> 16) & 0xFF) / 255.0;
+		double bg_g = ((bg >> 8) & 0xFF) / 255.0;
+		double bg_b = ((bg) & 0xFF) / 255.0;
+		cairo_set_source_rgba(cr, bg_r, bg_g, bg_b, bg_a);
+		cairo_paint(cr);
+	}
+
 	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
 	cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL,
@@ -275,7 +290,7 @@ date_widget_needs_repaint(int *last_minute)
 
 	if (cur != *last_minute) {
 		if (verbose >= 3)
-			printf("[DATE³] minute changed (%d → %d), scheduling repaint\n",
+			printf("[DATE] minute changed (%d → %d), scheduling repaint\n",
 				*last_minute, cur);
 		*last_minute = cur;
 		return 1;
@@ -301,7 +316,7 @@ date_widget_needs_repaint_seconds(int *last_second)
 
 	if (cur != *last_second) {
 		if (verbose >= 3)
-			printf("[DATE³] second changed (%d → %d), scheduling repaint\n",
+			printf("[DATE] second changed (%d → %d), scheduling repaint\n",
 				*last_second, cur);
 		*last_second = cur;
 		return 1;
