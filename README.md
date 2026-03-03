@@ -1,7 +1,8 @@
 # labar
 
 Lightweight launch bar for Wayland
-([unrelated](https://www.youtube.com/watch?v=le-wL4Sm5Xg)).
+([unrelated](https://www.youtube.com/watch?v=le-wL4Sm5Xg)
+[ditto](https://www.youtube.com/watch?v=C-fXYJj316Q)).
 
 ## Context
 

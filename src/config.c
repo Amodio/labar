@@ -935,9 +935,11 @@ write_default_config(DesktopEntry **entries, int count)
 	const char *default_apps[] = {
 		"keepassxc",
 		"thunderbird",
+		"google-chrome",
+		"chromium",
 		"firefox",
-		"htop",
 		"foot",
+		"xterm",
 	};
 	int default_count = sizeof(default_apps) / sizeof(default_apps[0]);
 
