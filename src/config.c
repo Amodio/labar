@@ -711,13 +711,13 @@ parse_config_file(FILE *fp)
 				if (verbose >= 2)
 					printf("[DBG²]   show-date: %s\n",
 						cfg.show_date ? "true" : "false");
-			} else if (strcmp(key, "date-date-format") == 0) {
+			} else if (strcmp(key, "widget-date-format") == 0) {
 				free(cfg.date_date_format);
 				cfg.date_date_format = strdup(value);
 				if (verbose >= 2)
-					printf("[DBG²]   date-date-format: %s\n",
+					printf("[DBG²]   widget-date-format: %s\n",
 						cfg.date_date_format);
-			} else if (strcmp(key, "date-date-color") == 0) {
+			} else if (strcmp(key, "widget-date-color") == 0) {
 				const char *hex = value;
 				if (hex[0] == '#')
 					hex++;
@@ -728,19 +728,20 @@ parse_config_file(FILE *fp)
 					cfg.date_date_color =
 						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
 				if (verbose >= 2)
-					printf("[DBG²]   date-date-color: 0x%08X\n",
+					printf("[DBG²]   widget-date-color: 0x%08X\n",
 						cfg.date_date_color);
-			} else if (strcmp(key, "date-date-size") == 0) {
+			} else if (strcmp(key, "widget-date-size") == 0) {
 				cfg.date_date_size = atoi(value);
 				if (verbose >= 2)
-					printf("[DBG²]   date-date-size: %d\n", cfg.date_date_size);
-			} else if (strcmp(key, "date-time-format") == 0) {
+					printf("[DBG²]   widget-date-size: %d\n",
+						cfg.date_date_size);
+			} else if (strcmp(key, "widget-date-time-format") == 0) {
 				free(cfg.date_time_format);
 				cfg.date_time_format = strdup(value);
 				if (verbose >= 2)
-					printf("[DBG²]   date-time-format: %s\n",
+					printf("[DBG²]   widget-date-time-format: %s\n",
 						cfg.date_time_format);
-			} else if (strcmp(key, "date-time-color") == 0) {
+			} else if (strcmp(key, "widget-date-time-color") == 0) {
 				const char *hex = value;
 				if (hex[0] == '#')
 					hex++;
@@ -751,13 +752,14 @@ parse_config_file(FILE *fp)
 					cfg.date_time_color =
 						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
 				if (verbose >= 2)
-					printf("[DBG²]   date-time-color: 0x%08X\n",
+					printf("[DBG²]   widget-date-time-color: 0x%08X\n",
 						cfg.date_time_color);
-			} else if (strcmp(key, "date-time-size") == 0) {
+			} else if (strcmp(key, "widget-date-time-size") == 0) {
 				cfg.date_time_size = atoi(value);
 				if (verbose >= 2)
-					printf("[DBG²]   date-time-size: %d\n", cfg.date_time_size);
-			} else if (strcmp(key, "date-bg-color") == 0) {
+					printf("[DBG²]   widget-date-time-size: %d\n",
+						cfg.date_time_size);
+			} else if (strcmp(key, "widget-date-bg-color") == 0) {
 				const char *hex = value;
 				if (hex[0] == '#')
 					hex++;
@@ -770,7 +772,7 @@ parse_config_file(FILE *fp)
 					cfg.date_bg_color =
 						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
 				if (verbose >= 2)
-					printf("[DBG²]   date-bg-color: 0x%08X\n",
+					printf("[DBG²]   widget-date-bg-color: 0x%08X\n",
 						cfg.date_bg_color);
 			}
 			continue;
@@ -1017,21 +1019,23 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp, "show-date=true\n");
 	fprintf(fp, "# date/time widget — line 1 (date) style\n");
 	fprintf(fp,
-		"#   date-date-format: strftime(3) format, e.g. \"%%a %%d %%B\"\n");
-	fprintf(fp, "date-date-format=%%a %%d %%B\n");
-	fprintf(fp, "date-date-color=#68FF3A\n");
-	fprintf(fp, "date-date-size=16\n");
+		"#   widget-date-format: strftime(3) format, e.g. \"%%a %%d %%B\"\n");
+	fprintf(fp, "widget-date-format=%%a %%d %%B\n");
+	fprintf(fp, "widget-date-color=#68FF3A\n");
+	fprintf(fp, "widget-date-size=16\n");
 	fprintf(fp, "# date/time widget — line 2 (time) style\n");
-	fprintf(fp, "#   date-time-format: strftime(3) format, e.g. \"%%H:%%M\"\n");
-	fprintf(fp, "date-time-format=%%H:%%M\n");
-	fprintf(fp, "date-time-color=#FF0000\n");
-	fprintf(fp, "date-time-size=36\n");
-	fprintf(fp, "# date-bg-color: background color for the date/time tile\n");
+	fprintf(fp,
+		"#   widget-date-time-format: strftime(3) format, e.g. \"%%H:%%M\"\n");
+	fprintf(fp, "widget-date-time-format=%%H:%%M\n");
+	fprintf(fp, "widget-date-time-color=#FF0000\n");
+	fprintf(fp, "widget-date-time-size=36\n");
+	fprintf(fp,
+		"# widget-date-bg-color: background color for the date/time tile\n");
 	fprintf(fp, "#   format: #RRGGBBAA (alpha in last byte)\n");
 	fprintf(fp, "#   e.g. #00000094 = black 42%% transparent (default)\n");
 	fprintf(fp, "#        #00000000 = fully transparent\n");
 	fprintf(fp, "#        #000000FF = fully opaque black\n");
-	fprintf(fp, "date-bg-color=#00000094\n");
+	fprintf(fp, "widget-date-bg-color=#00000094\n");
 	fprintf(fp, "\n[apps]\n");
 
 	int written = 0;

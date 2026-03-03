@@ -100,36 +100,36 @@ and one or more *[apps]* sections.
 	Append a volume icon slot at the end of the bar. The slot shows the
 	current ALSA PCM level; left-click toggles mute, right-click opens
 	*alsamixer* in a terminal, and scroll adjusts the volume.
-	Default: *false*.
+	Default: *true*.
 
 *show-date=*true|false
 	Append a date/time text slot at the end of the bar (after the volume
 	slot if enabled). The slot renders two lines of text using Cairo;
 	no icon file is required. Default: *true*.
 
-*date-date-format=*_FORMAT_
+*widget-date-format=*_FORMAT_
 	*strftime*(3) format string for the upper line of the date slot.
 	Default: *%a %d %B* (abbreviated weekday and day-of-month).
 
-*date-date-color=*_#RRGGBB_|_#RRGGBBAA_
+*widget-date-color=*_#RRGGBB_|_#RRGGBBAA_
 	Color of the upper date line. Default: *#68FF3A*.
 
-*date-date-size=*_N_
+*widget-date-size=*_N_
 	Font size in points for the upper date line. Default: *16*.
 
-*date-time-format=*_FORMAT_
+*widget-date-time-format=*_FORMAT_
 	*strftime*(3) format string for the lower line of the date slot.
 	If the format includes *%S*, *%T*, *%X*, *%c*, or *%r*, the slot
 	refreshes every second; otherwise it refreshes at each minute
 	boundary. Default: *%H:%M*.
 
-*date-time-color=*_#RRGGBB_|_#RRGGBBAA_
+*widget-date-time-color=*_#RRGGBB_|_#RRGGBBAA_
 	Color of the lower time line. Default: *#FF0000*.
 
-*date-time-size=*_N_
+*widget-date-time-size=*_N_
 	Font size in points for the lower time line. Default: *36*.
 
-*date-bg-color=*_#RRGGBBAA_
+*widget-date-bg-color=*_#RRGGBBAA_
 	Background fill color for the date/time tile. Supports alpha;
 	*#00000000* is fully transparent. Default: *#00000094* (black,
 	42% transparent).
@@ -168,7 +168,7 @@ Each application is defined by a consecutive block of keys inside an
 #       maximized windows from overlapping)
 #   -1: surface stretches to edges, ignoring other
 #       surfaces (e.g., wallpaper, lock screen)
-#exclusive-zone=64
+exclusive-zone=64
 icon-size=64
 # icon-spacing: spacing between icons in pixels
 icon-spacing=0
@@ -203,21 +203,21 @@ show-volume=true
 #   false: no date/time widget (default)
 show-date=true
 # date/time widget — line 1 (date) style
-#   date-date-format: strftime(3) format, e.g. "%a %d %B"
-date-date-format=%a %d %B
-date-date-color=#68FF3A
-date-date-size=16
+#   widget-date-format: strftime(3) format, e.g. "%a %d %B"
+widget-date-format=%a %d %B
+widget-date-color=#68FF3A
+widget-date-size=16
 # date/time widget — line 2 (time) style
-#   date-time-format: strftime(3) format, e.g. "%H:%M"
-date-time-format=%H:%M
-date-time-color=#FF0000
-date-time-size=36
-# date-bg-color: background color for the date/time tile
+#   widget-date-time-format: strftime(3) format, e.g. "%H:%M"
+widget-date-time-format=%H:%M
+widget-date-time-color=#FF0000
+widget-date-time-size=36
+# widget-date-bg-color: background color for the date/time tile
 #   format: #RRGGBBAA (alpha in last byte)
 #   e.g. #00000094 = black 42% transparent (default)
 #        #00000000 = fully transparent
 #        #000000FF = fully opaque black
-date-bg-color=#00000094
+widget-date-bg-color=#00000094
 
 [apps]
 name=KeePassXC

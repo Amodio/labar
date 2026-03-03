@@ -11,19 +11,19 @@
 // two lines drawn directly onto the shared-memory pixel buffer with Cairo:
 //
 //   Line 1 (upper half)  – date string, formatted with date_date_format
-//                          (default: "%a %d")   e.g.  "Tue 03"
+//                          (default: "%a %d %B")   e.g.  "Tue 03 March"
 //   Line 2 (lower half)  – time string, formatted with date_time_format
 //                          (default: "%H:%M")   e.g.  "14:37"
 //
 // Each line has its own color and font size, controlled by dedicated keys in
 // the [global] section of labar.cfg:
 //
-//   date-date-format   strftime format for line 1  (default: "%a %d")
-//   date-date-color    hex color  #RRGGBB[AA]       (default: #FFFFFF)
-//   date-date-size     font size in points          (default: 10)
-//   date-time-format   strftime format for line 2  (default: "%H:%M")
-//   date-time-color    hex color  #RRGGBB[AA]       (default: #FFFFFF)
-//   date-time-size     font size in points          (default: 14)
+//   widget-date-format         strftime format for line 1
+//   widget-date-color          hex color  #RRGGBB[AA]
+//   widget-date-size           font size in points
+//   widget-date-time-format    strftime format for line 2
+//   widget-date-time-color     hex color  #RRGGBB[AA]
+//   widget-date-time-size      font size in points
 //
 // The tile background is fully transparent.
 // The widget is display-only — no mouse bindings are registered.
@@ -32,7 +32,7 @@
 // ---------------------------------------------------------------------------
 
 // Default strftime(3) format strings
-#define WIDGET_DATE_DATE_FORMAT "%a %d" // e.g. "Tue 03"
+#define WIDGET_DATE_DATE_FORMAT "%a %d %B" // e.g. "Tue 03 March"
 #define WIDGET_DATE_TIME_FORMAT "%H:%M" // e.g. "14:37"
 
 // Default visual properties (used when config fields are 0 / NULL)

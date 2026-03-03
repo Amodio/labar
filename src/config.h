@@ -92,14 +92,14 @@ typedef struct {
 	//
 	// Config keys in [global]:
 	//   show-date          true / false                    (default: false)
-	//   date-date-format   strftime format for line 1      (default: "%a %d")
-	//   date-date-color    #RRGGBB[AA] for line 1          (default: #FFFFFF)
-	//   date-date-size     font size in pt for line 1      (default: 10)
-	//   date-time-format   strftime format for line 2      (default: "%H:%M")
-	//   date-time-color    #RRGGBB[AA] for line 2          (default: #FFFFFF)
-	//   date-time-size     font size in pt for line 2      (default: 14)
-	//   date-bg-color      #RRGGBB[AA] tile background     (default: 0 =
-	//   transparent)
+	//   widget-date-format   strftime format for line 1      (default: "%a %d")
+	//   widget-date-color    #RRGGBB[AA] for line 1          (default: #FFFFFF)
+	//   widget-date-size     font size in pt for line 1      (default: 10)
+	//   widget-date-time-format   strftime format for line 2      (default:
+	//   "%H:%M") widget-date-time-color    #RRGGBB[AA] for line 2 (default:
+	//   #FFFFFF) widget-date-time-size     font size in pt for line 2 (default:
+	//   14) widget-date-bg-color      #RRGGBB[AA] tile background     (default:
+	//   0 = transparent)
 	//
 	// The slot is display-only — no mouse bindings are registered.
 	// The tile is redrawn automatically once per minute.
