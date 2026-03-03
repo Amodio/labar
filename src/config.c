@@ -1026,10 +1026,10 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp, "date-time-size=32\n");
 	fprintf(fp, "# date-bg-color: background color for the date/time tile\n");
 	fprintf(fp, "#   format: #RRGGBBAA (alpha in last byte)\n");
-	fprintf(fp, "#   e.g. #00000033 = black 80%% transparent (default)\n");
+	fprintf(fp, "#   e.g. #00000094 = black 42%% transparent (default)\n");
 	fprintf(fp, "#        #00000000 = fully transparent\n");
 	fprintf(fp, "#        #000000FF = fully opaque black\n");
-	fprintf(fp, "date-bg-color=#000000AA\n");
+	fprintf(fp, "date-bg-color=#00000094\n");
 	fprintf(fp, "\n[apps]\n");
 
 	int written = 0;

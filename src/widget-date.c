@@ -4,6 +4,7 @@
 #include "config.h"
 
 #include <cairo.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -224,8 +225,21 @@ date_draw_tile(uint32_t *data, int width, int height, const Config *cfg)
 		double bg_r = ((bg >> 16) & 0xFF) / 255.0;
 		double bg_g = ((bg >> 8) & 0xFF) / 255.0;
 		double bg_b = ((bg) & 0xFF) / 255.0;
+
+		// Rounded rectangle: corner radius = 25 % of the shorter dimension
+		double r = (width < height ? width : height) * 0.25;
+		double x0 = 0, y0 = 0;
+		double x1 = width, y1 = height;
+
+		cairo_new_path(cr);
+		cairo_arc(cr, x0 + r, y0 + r, r, M_PI, 3 * M_PI / 2);
+		cairo_arc(cr, x1 - r, y0 + r, r, 3 * M_PI / 2, 2 * M_PI);
+		cairo_arc(cr, x1 - r, y1 - r, r, 0, M_PI / 2);
+		cairo_arc(cr, x0 + r, y1 - r, r, M_PI / 2, M_PI);
+		cairo_close_path(cr);
+
 		cairo_set_source_rgba(cr, bg_r, bg_g, bg_b, bg_a);
-		cairo_paint(cr);
+		cairo_fill(cr);
 	}
 
 	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
