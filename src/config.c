@@ -1025,7 +1025,7 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp, "#   date-time-format: strftime(3) format, e.g. \"%%H:%%M\"\n");
 	fprintf(fp, "date-time-format=%%H:%%M\n");
 	fprintf(fp, "date-time-color=#FF0000\n");
-	fprintf(fp, "date-time-size=32\n");
+	fprintf(fp, "date-time-size=36\n");
 	fprintf(fp, "# date-bg-color: background color for the date/time tile\n");
 	fprintf(fp, "#   format: #RRGGBBAA (alpha in last byte)\n");
 	fprintf(fp, "#   e.g. #00000094 = black 42%% transparent (default)\n");

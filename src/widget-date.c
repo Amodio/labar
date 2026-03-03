@@ -13,6 +13,9 @@
 // External verbose flag (defined in main.c)
 extern int verbose;
 
+// HiDPI scale factor (defined in main.c; 1 = normal, 2 = 2× HiDPI)
+extern int buffer_scale;
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
@@ -107,12 +110,14 @@ date_compute_tile_size(const Config *cfg)
 		(cfg && cfg->date_time_format && cfg->date_time_format[0]) ?
 		cfg->date_time_format :
 		WIDGET_DATE_TIME_FORMAT;
-	double date_sz = (cfg && cfg->date_date_size > 0) ?
-		(double)cfg->date_date_size :
-		(double)WIDGET_DATE_DATE_SIZE;
-	double time_sz = (cfg && cfg->date_time_size > 0) ?
-		(double)cfg->date_time_size :
-		(double)WIDGET_DATE_TIME_SIZE;
+	double date_sz =
+		((cfg && cfg->date_date_size > 0) ? (double)cfg->date_date_size :
+											(double)WIDGET_DATE_DATE_SIZE) *
+		buffer_scale;
+	double time_sz =
+		((cfg && cfg->date_time_size > 0) ? (double)cfg->date_time_size :
+											(double)WIDGET_DATE_TIME_SIZE) *
+		buffer_scale;
 
 	// Format representative strings with the current time
 	struct tm t;
@@ -181,12 +186,14 @@ date_draw_tile(uint32_t *data, int width, int height, const Config *cfg)
 	unsigned int time_col = (cfg && cfg->date_time_color) ?
 		cfg->date_time_color :
 		WIDGET_DATE_TIME_COLOR;
-	double date_sz = (cfg && cfg->date_date_size > 0) ?
-		(double)cfg->date_date_size :
-		(double)WIDGET_DATE_DATE_SIZE;
-	double time_sz = (cfg && cfg->date_time_size > 0) ?
-		(double)cfg->date_time_size :
-		(double)WIDGET_DATE_TIME_SIZE;
+	double date_sz =
+		((cfg && cfg->date_date_size > 0) ? (double)cfg->date_date_size :
+											(double)WIDGET_DATE_DATE_SIZE) *
+		buffer_scale;
+	double time_sz =
+		((cfg && cfg->date_time_size > 0) ? (double)cfg->date_time_size :
+											(double)WIDGET_DATE_TIME_SIZE) *
+		buffer_scale;
 
 	// Obtain current time
 	struct tm t;

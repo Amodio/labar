@@ -12,7 +12,7 @@ librsvg_dep = dependency('librsvg-2.0')
 # ALSA for volume control
 alsa_dep = dependency('alsa')
 
-# Build protocols code (generated from XML)
+# Build wayland-protocols code (generated from XML)
 subdir('protocols')
 
 # Documentation
@@ -42,6 +42,6 @@ executable(
   c_args: [
     '-DVERSION="' + meson.project_name() + ' ' + meson.project_version() + '"',
     '-DVOLUME_PIXMAP_DIR="' + pixmap_dir + '"',
-    ],
+  ],
   install: true
 )

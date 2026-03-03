@@ -9,6 +9,8 @@ wayland_scanner = find_program(
 
 protocols = [
   [ wp_dir, 'stable/xdg-shell/xdg-shell.xml' ],
+  [ wp_dir, 'stable/viewporter/viewporter.xml' ],
+  [ wp_dir, 'staging/fractional-scale/fractional-scale-v1.xml' ],
   [ 'wlr-layer-shell-unstable-v1.xml' ],
 ]
 

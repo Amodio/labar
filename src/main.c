@@ -6,6 +6,7 @@
 #include <librsvg/rsvg.h>
 #include <linux/input-event-codes.h>
 #include <locale.h>
+#include <math.h>
 #include <poll.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -23,6 +24,10 @@
 #include "widget-volume.h"
 #include "wlr-layer-shell-unstable-v1-protocol.h"
 
+// wp_fractional_scale_v1 + wp_viewporter for sub-integer HiDPI.
+#include "fractional-scale-v1-protocol.h"
+#include "viewporter-protocol.h"
+
 // Global verbose flag for debug output (0=none, 1=normal, 2=extra)
 int verbose = 0;
 
@@ -39,6 +44,29 @@ struct wl_shm *shm;
 struct zwlr_layer_shell_v1 *layer_shell;
 struct wl_seat *seat;
 struct wl_pointer *pointer;
+struct wl_output *output; // First output — used to read buffer scale
+
+// ---------------------------------------------------------------------------
+// HiDPI scale state
+//
+// Integer scaling (wl_output.scale): buffer_scale is the integer multiplier.
+// Fractional scaling (wp_fractional_scale_v1): scale is expressed as a
+//   fixed-point value with 1/120 precision.  We store both and pick whichever
+//   is available; fractional takes precedence when the extension is present.
+//
+// All physical pixel calculations use buffer_scale_num / buffer_scale_denom
+// as the effective ratio (so integer 2× is represented as 240/120).
+// The integer buffer_scale is used for wl_surface_set_buffer_scale() which
+// only accepts integers; fractional mode uses wp_viewport instead.
+// ---------------------------------------------------------------------------
+int buffer_scale = 1;			// Integer scale (wl_output.scale)
+double buffer_scale_frac = 1.0; // Effective scale including fractional
+
+struct wp_fractional_scale_manager_v1 *fractional_scale_manager = NULL;
+struct wp_fractional_scale_v1 *fractional_scale_obj = NULL;
+struct wp_viewporter *viewporter = NULL;
+struct wp_viewport *viewport_obj = NULL;
+int using_fractional_scale = 0; // 1 when fractional protocol is active
 
 // ---------------------------------------------------------------------------
 // Layer-surface state
@@ -48,9 +76,15 @@ struct zwlr_layer_surface_v1 *layer_surface;
 struct wl_buffer *buffer;
 uint32_t *pixels; // Pointer into the SHM mapping
 
-// Surface dimensions — updated on the first configure event from the compositor
+// Surface dimensions in LOGICAL pixels — updated on configure events.
+// The compositor always talks in logical pixels; we multiply by buffer_scale
+// when allocating SHM buffers and blitting tiles.
 int surf_width = 64;
 int surf_height = 64;
+
+// Physical pixel dimensions of the SHM buffer (surf_* × buffer_scale).
+int phys_width = 64;
+int phys_height = 64;
 
 // Current pointer position (updated by pointer_motion)
 double current_pointer_x = 0.0;
@@ -233,7 +267,7 @@ draw_text(uint32_t *data, int width, int height, const char *text, int y_offset,
 	// Set font and text properties
 	cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL,
 		CAIRO_FONT_WEIGHT_NORMAL);
-	cairo_set_font_size(cr, app_config.label_size);
+	cairo_set_font_size(cr, (double)app_config.label_size * buffer_scale);
 
 	// Get text extents to center it
 	cairo_text_extents_t extents;
@@ -406,8 +440,8 @@ static void
 draw_tile(const char *icon_path, const char *label, int slot_index,
 	int is_vertical)
 {
-	int icon_size = app_config.icon_size;
-	int offset = get_offset_for_icon(slot_index);
+	int icon_size = app_config.icon_size * buffer_scale;
+	int offset = get_offset_for_icon(slot_index) * buffer_scale;
 
 	uint32_t *tile = malloc(icon_size * icon_size * 4);
 	if (!tile)
@@ -417,7 +451,7 @@ draw_tile(const char *icon_path, const char *label, int slot_index,
 	draw_icon(icon_path, tile, icon_size, icon_size);
 
 	if (label && label[0] != '\0') {
-		int baseline = icon_size - app_config.label_offset;
+		int baseline = icon_size - app_config.label_offset * buffer_scale;
 		draw_text(tile, icon_size, icon_size, label, baseline,
 			app_config.label_color);
 	}
@@ -425,13 +459,13 @@ draw_tile(const char *icon_path, const char *label, int slot_index,
 	if (is_vertical) {
 		for (int ty = 0; ty < icon_size; ty++) {
 			uint32_t *src = tile + ty * icon_size;
-			uint32_t *dst = pixels + (offset + ty) * surf_width;
+			uint32_t *dst = pixels + (offset + ty) * phys_width;
 			memcpy(dst, src, icon_size * 4);
 		}
 	} else {
 		for (int ty = 0; ty < icon_size; ty++) {
 			uint32_t *src = tile + ty * icon_size;
-			uint32_t *dst = pixels + ty * surf_width + offset;
+			uint32_t *dst = pixels + ty * phys_width + offset;
 			memcpy(dst, src, icon_size * 4);
 		}
 	}
@@ -454,12 +488,13 @@ date_repaint_tile(struct wl_surface *wl_surf)
 	int is_vertical = (app_config.position == POSITION_LEFT ||
 		app_config.position == POSITION_RIGHT);
 	int slot = get_date_slot_index();
-	int offset = get_offset_for_icon(slot);
-	int icon_size = app_config.icon_size;
+	int offset = get_offset_for_icon(slot) * buffer_scale;
+	int icon_size = app_config.icon_size * buffer_scale;
 	// Along-bar dimension may be wider than icon_size to fit the text;
 	// the cross-bar dimension is always icon_size.
-	int tile_w =
-		app_config.date_tile_width > 0 ? app_config.date_tile_width : icon_size;
+	int tile_w = (app_config.date_tile_width > 0 ? app_config.date_tile_width :
+												   app_config.icon_size) *
+		buffer_scale;
 	int tile_h = icon_size;
 
 	uint32_t *tile = malloc(tile_w * tile_h * 4);
@@ -473,7 +508,7 @@ date_repaint_tile(struct wl_surface *wl_surf)
 		// width
 		for (int ty = 0; ty < tile_w; ty++) {
 			uint32_t *src = tile + ty * tile_h;
-			uint32_t *dst = pixels + (offset + ty) * surf_width;
+			uint32_t *dst = pixels + (offset + ty) * phys_width;
 			memcpy(dst, src, tile_h * 4);
 		}
 	} else {
@@ -481,7 +516,7 @@ date_repaint_tile(struct wl_surface *wl_surf)
 		// height
 		for (int ty = 0; ty < tile_h; ty++) {
 			uint32_t *src = tile + ty * tile_w;
-			uint32_t *dst = pixels + ty * surf_width + offset;
+			uint32_t *dst = pixels + ty * phys_width + offset;
 			memcpy(dst, src, tile_w * 4);
 		}
 	}
@@ -502,22 +537,27 @@ static void
 layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 	uint32_t width, uint32_t height)
 {
-	// Use compositor-provided dimensions, falling back to our defaults
+	// Compositor provides LOGICAL dimensions; we allocate a physical buffer
+	// that is buffer_scale times larger in each dimension.
+	// For fractional scaling the physical buffer is ceil(scale) × logical,
+	// and wp_viewport maps it back to the exact logical size.
 	surf_width = width > 0 ? (int)width : 64;
 	surf_height = height > 0 ? (int)height : 64;
+	// Use the integer ceiling of the effective scale for SHM allocation.
+	int phys_scale = buffer_scale; // already ceil'd in fractional path
+	phys_width = surf_width * phys_scale;
+	phys_height = surf_height * phys_scale;
 
-	// Allocate the SHM buffer and render icons on the first configure only.
-	// Subsequent configures (e.g. output hotplug) don't need a new buffer
-	// unless the size changes — extend this block if resize support is
-	// needed.
 	if (!buffer) {
-		buffer = create_shm_buffer(surf_width, surf_height, &pixels);
+		// Allocate SHM buffer at physical (HiDPI) resolution
+		buffer = create_shm_buffer(phys_width, phys_height, &pixels);
 
 		// Clear the entire buffer to transparent
-		memset(pixels, 0, surf_width * surf_height * 4);
+		memset(pixels, 0, phys_width * phys_height * 4);
 
-		int icon_size = app_config.icon_size;		// Use configured icon size
-		int icon_spacing = app_config.icon_spacing; // Use configured spacing
+		// Physical icon and spacing sizes
+		int icon_size = app_config.icon_size * buffer_scale;
+		int icon_spacing = app_config.icon_spacing * buffer_scale;
 
 		// Determine if bar is horizontal or vertical
 		int is_vertical = (app_config.position == POSITION_LEFT ||
@@ -527,7 +567,7 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 			// Draw each application icon vertically (top to bottom)
 			int y_offset = 0;
 			for (int i = 0; i < app_config.count; i++) {
-				if (y_offset + icon_size > surf_height)
+				if (y_offset + icon_size > phys_height)
 					break; // Don't draw beyond buffer height
 
 				if (app_config.apps[i]->icon) {
@@ -554,7 +594,8 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 
 					// Draw the label only when label_mode is ALWAYS
 					if (app_config.label_mode == LABEL_MODE_ALWAYS) {
-						int baseline = icon_size - app_config.label_offset;
+						int baseline =
+							icon_size - app_config.label_offset * buffer_scale;
 						draw_text(text_overlay, icon_size, icon_size,
 							app_config.apps[i]->name, baseline,
 							app_config.label_color);
@@ -563,7 +604,7 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 					// Blit the text overlay onto the main buffer
 					for (int ty = 0; ty < icon_size; ty++) {
 						uint32_t *src = text_overlay + (ty * icon_size);
-						uint32_t *dst = pixels + ((y_offset + ty) * surf_width);
+						uint32_t *dst = pixels + ((y_offset + ty) * phys_width);
 						memcpy(dst, src, icon_size * 4);
 					}
 
@@ -590,10 +631,11 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 			// Draw date widget tile if enabled
 			if (app_config.show_date) {
 				int slot = get_date_slot_index();
-				int offset = get_offset_for_icon(slot);
-				int tile_w = app_config.date_tile_width > 0 ?
-					app_config.date_tile_width :
-					icon_size;
+				int offset = get_offset_for_icon(slot) * buffer_scale;
+				int tile_w = (app_config.date_tile_width > 0 ?
+									 app_config.date_tile_width :
+									 app_config.icon_size) *
+					buffer_scale;
 				int tile_h = icon_size;
 				uint32_t *tile = malloc(tile_w * tile_h * 4);
 				if (tile) {
@@ -602,7 +644,7 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 					// slot
 					for (int ty = 0; ty < tile_w; ty++) {
 						uint32_t *src = tile + ty * tile_h;
-						uint32_t *dst = pixels + (offset + ty) * surf_width;
+						uint32_t *dst = pixels + (offset + ty) * phys_width;
 						memcpy(dst, src, tile_h * 4);
 					}
 					free(tile);
@@ -612,7 +654,7 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 			// Draw each application icon horizontally (left to right)
 			int x_offset = 0;
 			for (int i = 0; i < app_config.count; i++) {
-				if (x_offset + icon_size > surf_width)
+				if (x_offset + icon_size > phys_width)
 					break; // Don't draw beyond buffer width
 
 				if (app_config.apps[i]->icon) {
@@ -639,7 +681,8 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 
 					// Draw the label only when label_mode is ALWAYS
 					if (app_config.label_mode == LABEL_MODE_ALWAYS) {
-						int baseline = icon_size - app_config.label_offset;
+						int baseline =
+							icon_size - app_config.label_offset * buffer_scale;
 						draw_text(text_overlay, icon_size, icon_size,
 							app_config.apps[i]->name, baseline,
 							app_config.label_color);
@@ -648,7 +691,7 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 					// Blit the text overlay onto the main buffer
 					for (int ty = 0; ty < icon_size; ty++) {
 						uint32_t *src = text_overlay + (ty * icon_size);
-						uint32_t *dst = pixels + ((ty)*surf_width) + x_offset;
+						uint32_t *dst = pixels + (ty * phys_width) + x_offset;
 						memcpy(dst, src, icon_size * 4);
 					}
 
@@ -675,10 +718,11 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 			// Draw date widget tile if enabled
 			if (app_config.show_date) {
 				int slot = get_date_slot_index();
-				int offset = get_offset_for_icon(slot);
-				int tile_w = app_config.date_tile_width > 0 ?
-					app_config.date_tile_width :
-					icon_size;
+				int offset = get_offset_for_icon(slot) * buffer_scale;
+				int tile_w = (app_config.date_tile_width > 0 ?
+									 app_config.date_tile_width :
+									 app_config.icon_size) *
+					buffer_scale;
 				int tile_h = icon_size;
 				uint32_t *tile = malloc(tile_w * tile_h * 4);
 				if (tile) {
@@ -687,12 +731,23 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 					// slot
 					for (int ty = 0; ty < tile_h; ty++) {
 						uint32_t *src = tile + ty * tile_w;
-						uint32_t *dst = pixels + ty * surf_width + offset;
+						uint32_t *dst = pixels + ty * phys_width + offset;
 						memcpy(dst, src, tile_w * 4);
 					}
 					free(tile);
 				}
 			}
+		}
+
+		// Tell the compositor how to interpret the buffer pixels.
+		// - Integer scaling: wl_surface_set_buffer_scale(scale)
+		// - Fractional scaling: wp_viewport maps the oversized buffer
+		//   back to the exact logical surface size.
+		if (using_fractional_scale && viewport_obj) {
+			// Buffer is ceil(scale) × logical size; viewport corrects it.
+			wp_viewport_set_destination(viewport_obj, surf_width, surf_height);
+		} else {
+			wl_surface_set_buffer_scale(surface, buffer_scale);
 		}
 
 		wl_surface_attach(surface, buffer, 0, 0);
@@ -723,6 +778,164 @@ static const struct zwlr_layer_surface_v1_listener layer_listener = {
 };
 
 // ---------------------------------------------------------------------------
+// wl_output listener — reads the display's buffer scale for HiDPI
+// ---------------------------------------------------------------------------
+static void
+output_geometry(void *data, struct wl_output *wl_output, int32_t x, int32_t y,
+	int32_t physical_width, int32_t physical_height, int32_t subpixel,
+	const char *make, const char *model, int32_t transform)
+{
+	// Not needed for scale detection
+}
+
+static void
+output_mode(void *data, struct wl_output *wl_output, uint32_t flags,
+	int32_t width, int32_t height, int32_t refresh)
+{
+	// Not needed for scale detection
+}
+
+static void
+output_done(void *data, struct wl_output *wl_output)
+{
+	// All output properties delivered; buffer_scale is already applied
+}
+
+// ---------------------------------------------------------------------------
+// trigger_redraw
+//
+// Force a full re-render at the current buffer_scale.  Used when the scale
+// changes due to output hotplug or fractional scale notification.
+//
+// Strategy: destroy the current wl_buffer so that the next layer_configure
+// callback (re-triggered by resizing the layer surface to its own size)
+// allocates a fresh one at the new physical resolution.
+// ---------------------------------------------------------------------------
+static void
+trigger_redraw(void)
+{
+	if (verbose)
+		printf("[DBG] trigger_redraw: scale=%.6f (integer %d)\n",
+			buffer_scale_frac, buffer_scale);
+
+	// Invalidate the icon cache — entries were rendered at the old scale.
+	cache_clear();
+
+	// Recompute the date tile width at the new scale.
+	if (app_config.show_date) {
+		int phys_w = date_compute_tile_size(&app_config);
+		app_config.date_tile_width = (buffer_scale > 1) ?
+			(phys_w + buffer_scale - 1) / buffer_scale :
+			phys_w;
+	}
+
+	// Destroy the stale buffer; layer_configure will create a new one.
+	if (buffer) {
+		wl_buffer_destroy(buffer);
+		buffer = NULL;
+		pixels = NULL;
+	}
+
+	// Re-trigger layer_configure by setting the same size again.
+	if (layer_surface && surf_width > 0 && surf_height > 0) {
+		zwlr_layer_surface_v1_set_size(layer_surface, surf_width, surf_height);
+		wl_surface_commit(surface);
+	}
+}
+
+static void
+output_scale(void *data, struct wl_output *wl_output, int32_t factor)
+{
+	// When fractional scale protocol is active, ignore integer scale events
+	// — the fractional listener is authoritative.
+	if (using_fractional_scale)
+		return;
+
+	if (factor >= 1) {
+		int old = buffer_scale;
+		buffer_scale = factor;
+		buffer_scale_frac = (double)factor;
+		if (verbose)
+			printf("[DBG] Output scale: %d\n", buffer_scale);
+		// If the scale changed after the initial setup, force a full redraw.
+		if (old != buffer_scale && buffer)
+			trigger_redraw();
+	}
+}
+
+static const struct wl_output_listener output_listener = {
+	.geometry = output_geometry,
+	.mode = output_mode,
+	.done = output_done,
+	.scale = output_scale,
+};
+
+// ---------------------------------------------------------------------------
+// wl_surface enter/leave — detect when the bar moves to a different output
+// ---------------------------------------------------------------------------
+static void
+surface_enter(void *data, struct wl_surface *surf, struct wl_output *entered)
+{
+	if (verbose >= 2)
+		printf("[DBG²] Surface entered output %p\n", (void *)entered);
+
+	// If this is a different output than the one we tracked, re-read its
+	// scale and trigger a redraw if it changed.
+	if (entered && entered != output) {
+		// Rebind our output pointer; the old listener is still valid
+		// because we never destroy it, but scale events going forward will
+		// come from the new output through its own listener if we add one.
+		// For simplicity: request a new roundtrip so pending scale events
+		// from this output are processed, then check if scale changed.
+		// (A full multi-output tracking system would require maintaining a
+		//  list — this handles the common single-bar-moves-to-new-monitor
+		//  case.)
+		output = entered;
+		wl_output_add_listener(output, &output_listener, NULL);
+	}
+}
+
+static void
+surface_leave(void *data, struct wl_surface *surf, struct wl_output *left)
+{
+	if (verbose >= 2)
+		printf("[DBG²] Surface left output %p\n", (void *)left);
+}
+
+static const struct wl_surface_listener surface_listener = {
+	.enter = surface_enter,
+	.leave = surface_leave,
+};
+
+// ---------------------------------------------------------------------------
+// wp_fractional_scale_v1 listener
+// ---------------------------------------------------------------------------
+static void
+fractional_scale_preferred(void *data, struct wp_fractional_scale_v1 *obj,
+	uint32_t scale_120)
+{
+	// scale_120 is the scale multiplied by 120 (e.g. 150% → 180, 200% → 240)
+	double new_scale = scale_120 / 120.0;
+	if (verbose)
+		printf("[DBG] Fractional scale: %u/120 = %.4f\n", scale_120, new_scale);
+
+	if (fabs(new_scale - buffer_scale_frac) < 1e-6)
+		return; // No change
+
+	buffer_scale_frac = new_scale;
+	// For SHM buffer allocation we ceil to an integer; wp_viewport
+	// will correct the mapping back to the exact fractional size.
+	buffer_scale = (int)ceil(new_scale);
+	using_fractional_scale = 1;
+	trigger_redraw();
+}
+
+static const struct wp_fractional_scale_v1_listener fractional_scale_listener =
+	{
+		.preferred_scale = fractional_scale_preferred,
+};
+
+// ---------------------------------------------------------------------------
 // Registry listener — binds Wayland globals as the compositor announces them
 // ---------------------------------------------------------------------------
 static void
@@ -741,6 +954,23 @@ registry_add(void *data, struct wl_registry *reg, uint32_t name,
 		wl_seat_add_listener(seat, get_seat_listener(), NULL);
 		if (verbose >= 2)
 			printf("[DBG²] Bound to wl_seat\n");
+	} else if (strcmp(interface, wl_output_interface.name) == 0 && !output) {
+		// Bind the first output; wl_output v2 is needed for scale events.
+		// Additional outputs are handled via wl_surface.enter events.
+		output = wl_registry_bind(reg, name, &wl_output_interface, 2);
+		wl_output_add_listener(output, &output_listener, NULL);
+		if (verbose >= 2)
+			printf("[DBG²] Bound to wl_output\n");
+	} else if (strcmp(interface,
+				   wp_fractional_scale_manager_v1_interface.name) == 0) {
+		fractional_scale_manager = wl_registry_bind(reg, name,
+			&wp_fractional_scale_manager_v1_interface, 1);
+		if (verbose >= 2)
+			printf("[DBG²] Bound to wp_fractional_scale_manager_v1\n");
+	} else if (strcmp(interface, wp_viewporter_interface.name) == 0) {
+		viewporter = wl_registry_bind(reg, name, &wp_viewporter_interface, 1);
+		if (verbose >= 2)
+			printf("[DBG²] Bound to wp_viewporter\n");
 	}
 }
 
@@ -796,11 +1026,6 @@ main(int argc, char *argv[])
 		return 1;
 	}
 
-	// Compute the date widget tile size now that font sizes are known.
-	// This must happen before any layout or bar-size calculation.
-	if (app_config.show_date)
-		app_config.date_tile_width = date_compute_tile_size(&app_config);
-
 	if (verbose) {
 		printf("[DBG] Loaded configuration with %d application(s):\n",
 			app_config.count);
@@ -835,8 +1060,24 @@ main(int argc, char *argv[])
 	// layer-shell)
 	registry = wl_display_get_registry(display);
 	wl_registry_add_listener(registry, &registry_listener, NULL);
-	wl_display_roundtrip(
-		display); // Block until the registry is fully populated
+	wl_display_roundtrip(display); // Block until registry is fully populated
+
+	// A second roundtrip receives wl_output.scale (and .done) events so that
+	// buffer_scale is correctly set before any SHM buffer is allocated.
+	wl_display_roundtrip(display);
+
+	// Compute the date widget tile width now that buffer_scale is known.
+	// date_compute_tile_size() returns a physical pixel count (it scales font
+	// sizes by buffer_scale internally). We divide back to logical pixels so
+	// that all layout helpers (get_offset_for_icon, icon_span, etc.) can
+	// multiply by buffer_scale uniformly at draw time — consistent with every
+	// other dimension in the codebase.
+	if (app_config.show_date) {
+		int phys_w = date_compute_tile_size(&app_config);
+		app_config.date_tile_width = (buffer_scale > 1) ?
+			(phys_w + buffer_scale - 1) / buffer_scale :
+			phys_w;
+	}
 
 	// Validate that all required globals were found
 	if (!compositor || !shm || !layer_shell) {
@@ -849,6 +1090,27 @@ main(int argc, char *argv[])
 
 	// Create a plain Wayland surface to host our layer surface
 	surface = wl_compositor_create_surface(compositor);
+
+	// Listen for enter/leave events so we can detect output changes
+	wl_surface_add_listener(surface, &surface_listener, NULL);
+
+	// If both wp_fractional_scale_manager_v1 and wp_viewporter are available,
+	// set up fractional scaling.  The preferred_scale callback will fire before
+	// the first configure and set buffer_scale/buffer_scale_frac correctly.
+	if (fractional_scale_manager && viewporter) {
+		fractional_scale_obj =
+			wp_fractional_scale_manager_v1_get_fractional_scale(
+				fractional_scale_manager, surface);
+		wp_fractional_scale_v1_add_listener(fractional_scale_obj,
+			&fractional_scale_listener, NULL);
+		viewport_obj = wp_viewporter_get_viewport(viewporter, surface);
+		if (verbose)
+			printf("[DBG] Fractional scale + viewport objects created\n");
+	} else {
+		if (verbose)
+			printf(
+				"[DBG] Fractional scale not available; using integer scale\n");
+	}
 
 	// Calculate bar dimensions.
 	// Regular slots each occupy icon_size; the date slot uses date_tile_width.
