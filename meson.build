@@ -49,6 +49,7 @@ executable(
   'src/cache.c',
   'src/widget-volume.c',
   'src/widget-date.c',
+  'src/widget-net.c',
   extra_sources,
   dependencies: [
     wayland_client,

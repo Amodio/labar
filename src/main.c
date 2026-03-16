@@ -24,6 +24,7 @@
 #include "exec.h"
 #include "seat.h"
 #include "widget-date.h"
+#include "widget-net.h"
 #include "widget-volume.h"
 #include "wlr-layer-shell-unstable-v1-protocol.h"
 
@@ -100,20 +101,19 @@ int last_hovered_icon = -1;
 // get_total_widget_count
 //
 // Returns the total number of icon slots: apps + optional volume + optional
-// date widgets.
+// date + optional net widgets.
 // ---------------------------------------------------------------------------
 static int
 get_total_widget_count(void)
 {
 	return app_config.count + (app_config.show_volume ? 1 : 0) +
-		(app_config.show_date ? 1 : 0);
+		(app_config.show_date ? 1 : 0) + (app_config.show_net ? 1 : 0);
 }
 
 // ---------------------------------------------------------------------------
 // get_date_slot_index
 //
 // Returns the slot index of the date widget, or -1 if disabled.
-// The date widget is always the last slot.
 // ---------------------------------------------------------------------------
 int
 get_date_slot_index(void)
@@ -121,6 +121,21 @@ get_date_slot_index(void)
 	if (!app_config.show_date)
 		return -1;
 	return app_config.count + (app_config.show_volume ? 1 : 0);
+}
+
+// ---------------------------------------------------------------------------
+// get_net_slot_index
+//
+// Returns the slot index of the network widget, or -1 if disabled.
+// The network widget is always the last slot (after date if present).
+// ---------------------------------------------------------------------------
+static int
+get_net_slot_index(void)
+{
+	if (!app_config.show_net)
+		return -1;
+	return app_config.count + (app_config.show_volume ? 1 : 0) +
+		(app_config.show_date ? 1 : 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -147,13 +162,18 @@ get_icon_at_position(double coord)
 	int date_slot = app_config.show_date ?
 		(app_config.count + (app_config.show_volume ? 1 : 0)) :
 		-1;
+	int net_slot = get_net_slot_index();
 	int total_count = get_total_widget_count();
 
 	int pos = 0;
 	for (int i = 0; i < total_count; i++) {
-		int slot_size = (i == date_slot && app_config.date_tile_width > 0) ?
-			app_config.date_tile_width :
-			icon_size;
+		int slot_size;
+		if (i == date_slot && app_config.date_tile_width > 0)
+			slot_size = app_config.date_tile_width;
+		else if (i == net_slot && app_config.net_tile_width > 0)
+			slot_size = app_config.net_tile_width;
+		else
+			slot_size = icon_size;
 		int slot_end = pos + slot_size;
 		if (coord >= pos && coord < slot_end)
 			return i;
@@ -178,12 +198,17 @@ get_offset_for_icon(int icon_index)
 	int date_slot = app_config.show_date ?
 		(app_config.count + (app_config.show_volume ? 1 : 0)) :
 		-1;
+	int net_slot = get_net_slot_index();
 
 	int pos = 0;
 	for (int i = 0; i < icon_index; i++) {
-		int slot_size = (i == date_slot && app_config.date_tile_width > 0) ?
-			app_config.date_tile_width :
-			icon_size;
+		int slot_size;
+		if (i == date_slot && app_config.date_tile_width > 0)
+			slot_size = app_config.date_tile_width;
+		else if (i == net_slot && app_config.net_tile_width > 0)
+			slot_size = app_config.net_tile_width;
+		else
+			slot_size = icon_size;
 		pos += slot_size + spacing;
 	}
 	return pos;
@@ -531,7 +556,52 @@ date_repaint_tile(struct wl_surface *wl_surf)
 }
 
 // ---------------------------------------------------------------------------
-// Layer-surface event listeners
+// net_repaint_tile
+//
+// Re-renders the network speed slot once per second.
+// Called from the main dispatch loop via net_widget_needs_repaint().
+// ---------------------------------------------------------------------------
+static void
+net_repaint_tile(struct wl_surface *wl_surf)
+{
+	if (!buffer || !app_config.show_net)
+		return;
+
+	int is_vertical = (app_config.position == POSITION_LEFT ||
+		app_config.position == POSITION_RIGHT);
+	int slot = get_net_slot_index();
+	int offset = get_offset_for_icon(slot) * buffer_scale;
+	int icon_size = app_config.icon_size * buffer_scale;
+	int tile_w = (app_config.net_tile_width > 0 ? app_config.net_tile_width :
+												  app_config.icon_size) *
+		buffer_scale;
+	int tile_h = icon_size;
+
+	uint32_t *tile = malloc(tile_w * tile_h * 4);
+	if (!tile)
+		return;
+
+	net_draw_tile(tile, tile_w, tile_h, &app_config);
+
+	if (is_vertical) {
+		for (int ty = 0; ty < tile_w; ty++) {
+			uint32_t *src = tile + ty * tile_h;
+			uint32_t *dst = pixels + (offset + ty) * phys_width;
+			memcpy(dst, src, tile_h * 4);
+		}
+	} else {
+		for (int ty = 0; ty < tile_h; ty++) {
+			uint32_t *src = tile + ty * tile_w;
+			uint32_t *dst = pixels + ty * phys_width + offset;
+			memcpy(dst, src, tile_w * 4);
+		}
+	}
+	free(tile);
+
+	wl_surface_attach(wl_surf, buffer, 0, 0);
+	wl_surface_damage(wl_surf, 0, 0, surf_width, surf_height);
+	wl_surface_commit(wl_surf);
+}
 // ---------------------------------------------------------------------------
 
 // Called by the compositor when it assigns dimensions to our layer surface.
@@ -653,6 +723,27 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 					free(tile);
 				}
 			}
+
+			// Draw network widget tile if enabled
+			if (app_config.show_net) {
+				int slot = get_net_slot_index();
+				int offset = get_offset_for_icon(slot) * buffer_scale;
+				int tile_w =
+					(app_config.net_tile_width > 0 ? app_config.net_tile_width :
+													 app_config.icon_size) *
+					buffer_scale;
+				int tile_h = icon_size;
+				uint32_t *tile = malloc(tile_w * tile_h * 4);
+				if (tile) {
+					net_draw_tile(tile, tile_w, tile_h, &app_config);
+					for (int ty = 0; ty < tile_w; ty++) {
+						uint32_t *src = tile + ty * tile_h;
+						uint32_t *dst = pixels + (offset + ty) * phys_width;
+						memcpy(dst, src, tile_h * 4);
+					}
+					free(tile);
+				}
+			}
 		} else {
 			// Draw each application icon horizontally (left to right)
 			int x_offset = 0;
@@ -732,6 +823,27 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 					date_draw_tile(tile, tile_w, tile_h, &app_config);
 					// Horizontal bar: along-bar = X, tile_w is the width of the
 					// slot
+					for (int ty = 0; ty < tile_h; ty++) {
+						uint32_t *src = tile + ty * tile_w;
+						uint32_t *dst = pixels + ty * phys_width + offset;
+						memcpy(dst, src, tile_w * 4);
+					}
+					free(tile);
+				}
+			}
+
+			// Draw network widget tile if enabled
+			if (app_config.show_net) {
+				int slot = get_net_slot_index();
+				int offset = get_offset_for_icon(slot) * buffer_scale;
+				int tile_w =
+					(app_config.net_tile_width > 0 ? app_config.net_tile_width :
+													 app_config.icon_size) *
+					buffer_scale;
+				int tile_h = icon_size;
+				uint32_t *tile = malloc(tile_w * tile_h * 4);
+				if (tile) {
+					net_draw_tile(tile, tile_w, tile_h, &app_config);
 					for (int ty = 0; ty < tile_h; ty++) {
 						uint32_t *src = tile + ty * tile_w;
 						uint32_t *dst = pixels + ty * phys_width + offset;
@@ -828,6 +940,14 @@ trigger_redraw(void)
 	if (app_config.show_date) {
 		int phys_w = date_compute_tile_size(&app_config);
 		app_config.date_tile_width = (buffer_scale > 1) ?
+			(phys_w + buffer_scale - 1) / buffer_scale :
+			phys_w;
+	}
+
+	// Recompute the net tile width at the new scale.
+	if (app_config.show_net) {
+		int phys_w = net_compute_tile_size(&app_config);
+		app_config.net_tile_width = (buffer_scale > 1) ?
 			(phys_w + buffer_scale - 1) / buffer_scale :
 			phys_w;
 	}
@@ -1106,6 +1226,16 @@ main(int argc, char *argv[])
 			phys_w;
 	}
 
+	// Compute the net widget tile width and seed the byte counters.
+	// Same physical→logical conversion as for the date tile.
+	if (app_config.show_net) {
+		int phys_w = net_compute_tile_size(&app_config);
+		app_config.net_tile_width = (buffer_scale > 1) ?
+			(phys_w + buffer_scale - 1) / buffer_scale :
+			phys_w;
+		net_widget_init(&app_config);
+	}
+
 	// Validate that all required globals were found
 	if (!compositor || !shm || !layer_shell) {
 		fprintf(stderr,
@@ -1140,16 +1270,21 @@ main(int argc, char *argv[])
 	}
 
 	// Calculate bar dimensions.
-	// Regular slots each occupy icon_size; the date slot uses date_tile_width.
+	// Regular slots each occupy icon_size; the date/net slots use their
+	// respective tile widths.
 	int total_count = get_total_widget_count();
 	int date_slot_idx = get_date_slot_index();
+	int net_slot_idx = get_net_slot_index();
 	int icon_span = 0;
 	for (int i = 0; i < total_count; i++) {
 		if (i > 0)
 			icon_span += app_config.icon_spacing;
-		icon_span += (i == date_slot_idx && app_config.date_tile_width > 0) ?
-			app_config.date_tile_width :
-			app_config.icon_size;
+		if (i == date_slot_idx && app_config.date_tile_width > 0)
+			icon_span += app_config.date_tile_width;
+		else if (i == net_slot_idx && app_config.net_tile_width > 0)
+			icon_span += app_config.net_tile_width;
+		else
+			icon_span += app_config.icon_size;
 	}
 	// The bar cross-dimension (height for horizontal bar, width for vertical)
 	// is always icon_size — font size only affects the slot's width, not the
@@ -1255,6 +1390,10 @@ main(int argc, char *argv[])
 	int date_last_minute = -1;
 	int date_last_second = -1;
 
+	// Persistent state for the network widget repaint timer.
+	// Initialised to -1 so the first sample fires immediately.
+	int net_last_second = -1;
+
 	// Determine the required poll timeout from the configured time format.
 	//
 	// If the format contains a seconds-level directive (%S, %T, %X, %c, %r)
@@ -1276,6 +1415,10 @@ main(int argc, char *argv[])
 	if (verbose && app_config.show_date)
 		printf("[DBG] Date widget refresh: %s\n",
 			needs_seconds ? "every second" : "every minute");
+
+	if (verbose && app_config.show_net)
+		printf("[DBG] Net widget enabled (iface: %s)\n",
+			app_config.net_iface ? app_config.net_iface : "auto");
 
 	// Main event loop.
 	//
@@ -1318,13 +1461,23 @@ main(int argc, char *argv[])
 			}
 		}
 
+		// 3b. Repaint net tile once per second
+		if (app_config.show_net) {
+			if (net_widget_needs_repaint(&net_last_second)) {
+				net_repaint_tile(surface);
+				wl_display_flush(display);
+			}
+		}
+
 		// 4. Compute the timeout for this iteration
 		int timeout_ms;
-		if (!app_config.show_date) {
-			// No date widget — block indefinitely on Wayland events
+		if (!app_config.show_date && !app_config.show_net) {
+			// No timer-driven widgets — block indefinitely on Wayland events
 			timeout_ms = -1;
-		} else if (needs_seconds) {
-			// Wake up every 200 ms so we never miss a second tick
+		} else if (app_config.show_net || needs_seconds) {
+			// Net widget always needs 1-second resolution.
+			// Date widget with seconds directive also needs this.
+			// Use 200 ms so we never miss a tick due to scheduling jitter.
 			timeout_ms = 200;
 		} else {
 			// Sleep until 50 ms after the next whole minute

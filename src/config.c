@@ -472,6 +472,8 @@ free_config(Config *cfg)
 	cfg->date_date_format = NULL;
 	free(cfg->date_time_format);
 	cfg->date_time_format = NULL;
+	free(cfg->net_iface);
+	cfg->net_iface = NULL;
 }
 
 // Check if the config file exists
@@ -516,6 +518,13 @@ parse_config_file(FILE *fp)
 	cfg.date_time_color = 0;		   // Falls back to WIDGET_DATE_TIME_COLOR
 	cfg.date_time_size = 0;			   // Falls back to WIDGET_DATE_TIME_SIZE
 	cfg.date_bg_color = 0x33000000;	   // dark, 80% transparent by default
+	cfg.show_net = 1;				   // Network widget on by default
+	cfg.net_iface = NULL;			   // Auto-detect interface
+	cfg.net_rx_color = 0;			   // Falls back to WIDGET_NET_RX_COLOR
+	cfg.net_tx_color = 0;			   // Falls back to WIDGET_NET_TX_COLOR
+	cfg.net_font_size = 0;			   // Falls back to WIDGET_NET_FONT_SIZE
+	cfg.net_bg_color = 0x33000000;	   // dark, 80% transparent by default
+	cfg.net_tile_width = 0; // Set after load by net_compute_tile_size()
 	if (!cfg.apps)
 		return cfg;
 
@@ -711,6 +720,60 @@ parse_config_file(FILE *fp)
 				if (verbose >= 2)
 					printf("[DBG²]   show-date: %s\n",
 						cfg.show_date ? "true" : "false");
+			} else if (strcmp(key, "show-net") == 0) {
+				cfg.show_net =
+					(strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+				if (verbose >= 2)
+					printf("[DBG²]   show-net: %s\n",
+						cfg.show_net ? "true" : "false");
+			} else if (strcmp(key, "widget-net-iface") == 0) {
+				free(cfg.net_iface);
+				cfg.net_iface = strdup(value);
+				if (verbose >= 2)
+					printf("[DBG²]   widget-net-iface: %s\n", cfg.net_iface);
+			} else if (strcmp(key, "widget-net-rx-color") == 0) {
+				const char *hex = value;
+				if (hex[0] == '#')
+					hex++;
+				unsigned long parsed = strtoul(hex, NULL, 16);
+				if (strlen(hex) <= 6)
+					cfg.net_rx_color = 0xFF000000 | (unsigned int)parsed;
+				else
+					cfg.net_rx_color =
+						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
+				if (verbose >= 2)
+					printf("[DBG²]   widget-net-rx-color: 0x%08X\n",
+						cfg.net_rx_color);
+			} else if (strcmp(key, "widget-net-tx-color") == 0) {
+				const char *hex = value;
+				if (hex[0] == '#')
+					hex++;
+				unsigned long parsed = strtoul(hex, NULL, 16);
+				if (strlen(hex) <= 6)
+					cfg.net_tx_color = 0xFF000000 | (unsigned int)parsed;
+				else
+					cfg.net_tx_color =
+						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
+				if (verbose >= 2)
+					printf("[DBG²]   widget-net-tx-color: 0x%08X\n",
+						cfg.net_tx_color);
+			} else if (strcmp(key, "widget-net-size") == 0) {
+				cfg.net_font_size = atoi(value);
+				if (verbose >= 2)
+					printf("[DBG²]   widget-net-size: %d\n", cfg.net_font_size);
+			} else if (strcmp(key, "widget-net-bg-color") == 0) {
+				const char *hex = value;
+				if (hex[0] == '#')
+					hex++;
+				unsigned long parsed = strtoul(hex, NULL, 16);
+				if (strlen(hex) <= 6)
+					cfg.net_bg_color = 0xFF000000 | (unsigned int)parsed;
+				else
+					cfg.net_bg_color =
+						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
+				if (verbose >= 2)
+					printf("[DBG²]   widget-net-bg-color: 0x%08X\n",
+						cfg.net_bg_color);
 			} else if (strcmp(key, "widget-date-format") == 0) {
 				free(cfg.date_date_format);
 				cfg.date_date_format = strdup(value);
@@ -1031,6 +1094,22 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp, "#        #00000000 = fully transparent\n");
 	fprintf(fp, "#        #000000FF = fully opaque black\n");
 	fprintf(fp, "widget-date-bg-color=#00000094\n");
+	fprintf(fp,
+		"# show-net: append a network speed text slot at the end of the bar\n");
+	fprintf(fp, "#   true:  show the network widget\n");
+	fprintf(fp, "#   false: no network widget (default)\n");
+	fprintf(fp, "show-net=true\n");
+	fprintf(fp,
+		"# widget-net-iface: network interface to monitor (omit for auto-detect)\n");
+	fprintf(fp, "# widget-net-iface=eth0\n");
+	fprintf(fp, "# widget-net-rx-color: color for the receive speed line\n");
+	fprintf(fp, "widget-net-rx-color=#4FC3F7\n");
+	fprintf(fp, "# widget-net-tx-color: color for the transmit speed line\n");
+	fprintf(fp, "widget-net-tx-color=#EF9A9A\n");
+	fprintf(fp, "# widget-net-size: font size in pt for the speed lines\n");
+	fprintf(fp, "widget-net-size=9\n");
+	fprintf(fp, "# widget-net-bg-color: background color for the net tile\n");
+	fprintf(fp, "widget-net-bg-color=#00000094\n");
 	fprintf(fp, "\n[apps]\n");
 
 	int written = 0;
