@@ -242,7 +242,7 @@ net_widget_init(Config *cfg)
 		}
 	}
 
-	if (verbose)
+	if (verbose >= 1)
 		printf("[NET] Using interface: %s\n", g_net.iface);
 
 	// Seed the previous-tick counters so the first speed calculation
@@ -291,7 +291,7 @@ net_compute_tile_size(const Config *cfg)
 	if (w < icon_size)
 		w = icon_size;
 
-	if (verbose >= 2)
+	if (verbose >= 4)
 		printf("[NET] computed tile width: %d px  "
 			   "(rx_w=%.1f tx_w=%.1f)\n",
 			w, re.width, te.width);
@@ -320,7 +320,7 @@ net_draw_tile(uint32_t *data, int width, int height, const Config *cfg)
 	const char *rx_str = g_net.rx_label[0] ? g_net.rx_label : "↓ …";
 	const char *tx_str = g_net.tx_label[0] ? g_net.tx_label : "↑ …";
 
-	if (verbose >= 2)
+	if (verbose >= 4)
 		printf("[NET] tile %dx%d  rx='%s'  tx='%s'\n", width, height, rx_str,
 			tx_str);
 
@@ -418,7 +418,7 @@ net_widget_needs_repaint(int *last_second)
 		format_speed(g_net.rx_label, sizeof(g_net.rx_label), g_net.rx_bps, "↓");
 		format_speed(g_net.tx_label, sizeof(g_net.tx_label), g_net.tx_bps, "↑");
 
-		if (verbose >= 3)
+		if (verbose >= 4)
 			printf("[NET] %s  rx=%.0f B/s  tx=%.0f B/s\n", g_net.iface,
 				g_net.rx_bps, g_net.tx_bps);
 	}

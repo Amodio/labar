@@ -28,9 +28,9 @@
 // ---------------------------------------------------------------------------
 
 // Default visual properties
-#define WIDGET_NET_RX_COLOR 0xFF4FC3F7 // light blue
-#define WIDGET_NET_TX_COLOR 0xFFEF9A9A // light red
-#define WIDGET_NET_FONT_SIZE 9		   // pt
+#define WIDGET_NET_RX_COLOR 0xFFFF3FFA // magenta (down speed)
+#define WIDGET_NET_TX_COLOR 0xFF3AFFFD // cyan    (up speed)
+#define WIDGET_NET_FONT_SIZE 14		   // pt
 
 // ---------------------------------------------------------------------------
 // net_widget_init

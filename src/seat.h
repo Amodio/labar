@@ -44,6 +44,13 @@ extern Config app_config;
 const struct wl_seat_listener *get_seat_listener(void);
 const struct wl_pointer_listener *get_pointer_listener(void);
 
+// Slot index helpers (defined in main.c, used by seat.c)
+int get_date_slot_index(void);
+int get_volume_slot_index(void);
+int get_net_slot_index(void);
+int get_offset_for_icon(int icon_index);
+int get_icon_at_position(double coord);
+
 // Drawing functions (defined in main.c, used by seat.c)
 void draw_icon(const char *path, uint32_t *data, int width, int height);
 void draw_text(uint32_t *data, int width, int height, const char *text,

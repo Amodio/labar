@@ -7,18 +7,20 @@
 #include "config.h"
 #include "exec.h"
 #include "widget-date.h"
+#include "widget-net.h"
 #include "widget-volume.h"
 
 // Extern declarations for global state (defined in main.c)
 extern void draw_icon(const char *path, uint32_t *data, int width, int height);
 extern void draw_text(uint32_t *data, int width, int height, const char *text,
 	int y_offset, unsigned int color);
-extern int get_icon_at_position(double coord);
-extern int get_offset_for_icon(int icon_index);
-extern int get_date_slot_index(void);
 extern int buffer_scale; // HiDPI scale factor (1 = normal, 2 = 2x HiDPI)
 extern int phys_width;	 // Physical buffer width  (surf_width  * buffer_scale)
 extern int phys_height;	 // Physical buffer height (surf_height * buffer_scale)
+
+// Convenience: index of first app slot and helper to map slot → app index
+#define APP_FIRST_SLOT() ((app_config.show_net ? 1 : 0))
+#define SLOT_TO_APP(slot) ((slot) - APP_FIRST_SLOT())
 
 // ---------------------------------------------------------------------------
 // Pointer listeners — handle mouse events
@@ -54,13 +56,46 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 			memset(tile, 0, icon_size * icon_size * 4);
 
 			int date_slot = get_date_slot_index();
+			int volume_slot = get_volume_slot_index();
+			int net_slot = get_net_slot_index();
 
-			if (app_config.show_volume && idx == app_config.count) {
+			if (app_config.show_volume && idx == volume_slot) {
 				// Redraw volume icon without label
 				int percent = 0, muted = 0;
 				volume_get_info(&percent, &muted);
 				draw_icon(volume_get_icon_path(percent, muted), tile, icon_size,
 					icon_size);
+			} else if (net_slot >= 0 && idx == net_slot) {
+				// Net tile: width may differ from icon_size
+				free(tile);
+				int tile_w =
+					(app_config.net_tile_width > 0 ? app_config.net_tile_width :
+													 app_config.icon_size) *
+					buffer_scale;
+				int tile_h = icon_size;
+				tile = malloc(tile_w * tile_h * 4);
+				if (!tile)
+					goto done_leave;
+				net_draw_tile(tile, tile_w, tile_h, &app_config);
+				if (is_vertical) {
+					for (int ty = 0; ty < tile_w; ty++) {
+						uint32_t *src = tile + ty * tile_h;
+						uint32_t *dst = pixels + (offset + ty) * phys_width;
+						memcpy(dst, src, tile_h * 4);
+					}
+				} else {
+					for (int ty = 0; ty < tile_h; ty++) {
+						uint32_t *src = tile + ty * tile_w;
+						uint32_t *dst = pixels + ty * phys_width + offset;
+						memcpy(dst, src, tile_w * 4);
+					}
+				}
+				free(tile);
+				tile = NULL;
+				wl_surface_attach(surface, buffer, 0, 0);
+				wl_surface_damage(surface, 0, 0, surf_width, surf_height);
+				wl_surface_commit(surface);
+				goto done_leave;
 			} else if (date_slot >= 0 && idx == date_slot) {
 				// Redraw date tile — uses tile_width × icon_size, not a square
 				free(tile);
@@ -92,10 +127,11 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 				wl_surface_damage(surface, 0, 0, surf_width, surf_height);
 				wl_surface_commit(surface);
 				goto done_leave;
-			} else if (idx < app_config.count && app_config.apps[idx]->icon) {
+			} else if (idx < app_config.count &&
+				app_config.apps[SLOT_TO_APP(idx)]->icon) {
 				// Redraw app icon without label
-				draw_icon(app_config.apps[idx]->icon, tile, icon_size,
-					icon_size);
+				draw_icon(app_config.apps[SLOT_TO_APP(idx)]->icon, tile,
+					icon_size, icon_size);
 			} else {
 				free(tile);
 				goto done_leave;
@@ -146,6 +182,8 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 		if (app_config.label_mode == LABEL_MODE_HOVER && buffer) {
 			int icon_size = app_config.icon_size * buffer_scale;
 			int date_slot = get_date_slot_index();
+			int volume_slot = get_volume_slot_index();
+			int net_slot = get_net_slot_index();
 
 			int repaint_indices[2] = {last_hovered_icon, icon_index};
 			for (int r = 0; r < 2; r++) {
@@ -160,7 +198,7 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 					continue;
 				memset(tile, 0, icon_size * icon_size * 4);
 
-				if (app_config.show_volume && idx == app_config.count) {
+				if (app_config.show_volume && idx == volume_slot) {
 					// Volume slot
 					int percent = 0, muted = 0;
 					volume_get_info(&percent, &muted);
@@ -174,6 +212,34 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 						draw_text(tile, icon_size, icon_size, label, baseline,
 							app_config.label_color);
 					}
+				} else if (net_slot >= 0 && idx == net_slot) {
+					// Net tile: fixed size, display-only (no hover label)
+					free(tile);
+					tile = NULL;
+					int tile_w = (app_config.net_tile_width > 0 ?
+										 app_config.net_tile_width :
+										 app_config.icon_size) *
+						buffer_scale;
+					int tile_h = icon_size;
+					uint32_t *ntile = malloc(tile_w * tile_h * 4);
+					if (!ntile)
+						continue;
+					net_draw_tile(ntile, tile_w, tile_h, &app_config);
+					if (is_vertical) {
+						for (int ty = 0; ty < tile_w; ty++) {
+							uint32_t *src = ntile + ty * tile_h;
+							uint32_t *dst = pixels + (offset + ty) * phys_width;
+							memcpy(dst, src, tile_h * 4);
+						}
+					} else {
+						for (int ty = 0; ty < tile_h; ty++) {
+							uint32_t *src = ntile + ty * tile_w;
+							uint32_t *dst = pixels + ty * phys_width + offset;
+							memcpy(dst, src, tile_w * 4);
+						}
+					}
+					free(ntile);
+					continue;
 				} else if (date_slot >= 0 && idx == date_slot) {
 					// Date tile: width may differ from icon_size, height =
 					// icon_size
@@ -205,18 +271,19 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 					continue;
 				} else {
 					// Regular app slot
-					if (idx >= app_config.count ||
-						!app_config.apps[idx]->icon) {
+					int app_idx = SLOT_TO_APP(idx);
+					if (app_idx < 0 || app_idx >= app_config.count ||
+						!app_config.apps[app_idx]->icon) {
 						free(tile);
 						continue;
 					}
-					draw_icon(app_config.apps[idx]->icon, tile, icon_size,
+					draw_icon(app_config.apps[app_idx]->icon, tile, icon_size,
 						icon_size);
 					if (idx == icon_index) {
 						int baseline =
 							icon_size - app_config.label_offset * buffer_scale;
 						draw_text(tile, icon_size, icon_size,
-							app_config.apps[idx]->name, baseline,
+							app_config.apps[app_idx]->name, baseline,
 							app_config.label_color);
 					}
 				}
@@ -247,16 +314,21 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 		last_hovered_icon = icon_index;
 		if (icon_index >= 0 && verbose >= 1) {
 			int date_slot = get_date_slot_index();
+			int volume_slot = get_volume_slot_index();
+			int net_slot = get_net_slot_index();
 			if (date_slot >= 0 && icon_index == date_slot) {
 				char tooltip[64];
 				date_get_tooltip(tooltip, sizeof(tooltip));
 				printf("[DBG] Hovering over date widget (%s)\n", tooltip);
-			} else if (app_config.show_volume &&
-				icon_index == app_config.count) {
+			} else if (app_config.show_volume && icon_index == volume_slot) {
 				printf("[DBG] Hovering over volume widget\n");
+			} else if (net_slot >= 0 && icon_index == net_slot) {
+				printf("[DBG] Hovering over net widget\n");
 			} else {
-				printf("[DBG] Hovering over icon/app #%d '%s'\n", icon_index,
-					app_config.apps[icon_index]->name);
+				int app_idx = SLOT_TO_APP(icon_index);
+				if (app_idx >= 0 && app_idx < app_config.count)
+					printf("[DBG] Hovering over icon/app #%d '%s'\n", app_idx,
+						app_config.apps[app_idx]->name);
 			}
 		}
 	}
@@ -285,7 +357,7 @@ volume_repaint_tile(struct wl_surface *surface)
 	int icon_size = app_config.icon_size * buffer_scale; // physical pixels
 	int is_vertical = (app_config.position == POSITION_LEFT ||
 		app_config.position == POSITION_RIGHT);
-	int offset = get_offset_for_icon(app_config.count) * buffer_scale;
+	int offset = get_offset_for_icon(get_volume_slot_index()) * buffer_scale;
 
 	int percent = 0, muted = 0;
 	volume_get_info(&percent, &muted);
@@ -298,7 +370,7 @@ volume_repaint_tile(struct wl_surface *surface)
 	draw_icon(volume_get_icon_path(percent, muted), tile, icon_size, icon_size);
 
 	// Draw label when always-on, or when the pointer is hovering over the slot
-	int hovering = (last_hovered_icon == app_config.count);
+	int hovering = (last_hovered_icon == get_volume_slot_index());
 	if (app_config.label_mode == LABEL_MODE_ALWAYS ||
 		(app_config.label_mode == LABEL_MODE_HOVER && hovering)) {
 		char label[16];
@@ -359,17 +431,20 @@ pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 	double coord = is_vertical ? current_pointer_y : current_pointer_x;
 	int icon_index = get_icon_at_position(coord);
 	int date_slot = get_date_slot_index();
+	int volume_slot = get_volume_slot_index();
+	int net_slot = get_net_slot_index();
 
-	if (icon_index >= 0 && icon_index < app_config.count) {
+	int app_idx = SLOT_TO_APP(icon_index);
+	if (icon_index >= 0 && app_idx >= 0 && app_idx < app_config.count) {
 		if (verbose) {
 			printf("[DBG] Mouse button %s (%s) on icon/app #%d '%s'\n",
-				button_name, state_name, icon_index,
-				app_config.apps[icon_index]->name);
+				button_name, state_name, app_idx,
+				app_config.apps[app_idx]->name);
 		}
 		if (button == BTN_LEFT && state == WL_POINTER_BUTTON_STATE_PRESSED) {
-			launch_app(app_config.apps[icon_index]);
+			launch_app(app_config.apps[app_idx]);
 		}
-	} else if (app_config.show_volume && icon_index == app_config.count) {
+	} else if (app_config.show_volume && icon_index == volume_slot) {
 		if (verbose) {
 			printf("[DBG] Mouse button %s (%s) on volume widget\n", button_name,
 				state_name);
@@ -377,6 +452,12 @@ pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 		if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
 			volume_handle_click(button);
 			volume_repaint_tile(surface);
+		}
+	} else if (net_slot >= 0 && icon_index == net_slot) {
+		// Net widget is display-only; log the click but take no action
+		if (verbose) {
+			printf("[DBG] Mouse button %s (%s) on net widget\n", button_name,
+				state_name);
 		}
 	} else if (date_slot >= 0 && icon_index == date_slot) {
 		// Date widget is display-only; log the click but take no action
@@ -414,14 +495,17 @@ pointer_axis(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 	double coord = is_vertical ? current_pointer_y : current_pointer_x;
 	icon_index = get_icon_at_position(coord);
 	int date_slot = get_date_slot_index();
+	int volume_slot = get_volume_slot_index();
+	int net_slot = get_net_slot_index();
 
-	if (icon_index >= 0 && icon_index < app_config.count) {
+	int app_idx = SLOT_TO_APP(icon_index);
+	if (icon_index >= 0 && app_idx >= 0 && app_idx < app_config.count) {
 		if (verbose) {
 			printf("[DBG] Scroll %s on icon/app #%d '%s' (value=%.2f)\n",
-				direction, icon_index, app_config.apps[icon_index]->name,
+				direction, app_idx, app_config.apps[app_idx]->name,
 				scroll_value);
 		}
-	} else if (app_config.show_volume && icon_index == app_config.count) {
+	} else if (app_config.show_volume && icon_index == volume_slot) {
 		if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
 			if (verbose)
 				printf("[DBG] Scroll %s on volume widget (value=%.2f)\n",
@@ -429,6 +513,9 @@ pointer_axis(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 			volume_handle_scroll(scroll_value < 0);
 			volume_repaint_tile(surface);
 		}
+	} else if (net_slot >= 0 && icon_index == net_slot) {
+		if (verbose)
+			printf("[DBG] Scroll %s on net widget (no action)\n", direction);
 	} else if (date_slot >= 0 && icon_index == date_slot) {
 		if (verbose)
 			printf("[DBG] Scroll %s on date widget (no action)\n", direction);
@@ -480,11 +567,14 @@ pointer_axis_discrete(void *data, struct wl_pointer *wl_pointer, uint32_t axis,
 	double coord_d = is_vertical_d ? current_pointer_y : current_pointer_x;
 	icon_index = get_icon_at_position(coord_d);
 	int date_slot = get_date_slot_index();
+	int volume_slot = get_volume_slot_index();
+	int net_slot = get_net_slot_index();
 
-	if (icon_index >= 0 && icon_index < app_config.count) {
+	int app_idx = SLOT_TO_APP(icon_index);
+	if (icon_index >= 0 && app_idx >= 0 && app_idx < app_config.count) {
 		printf("[DBG] Scroll %s on icon/app #%d '%s' (steps=%d)\n", direction,
-			icon_index, app_config.apps[icon_index]->name, abs(discrete));
-	} else if (app_config.show_volume && icon_index == app_config.count) {
+			app_idx, app_config.apps[app_idx]->name, abs(discrete));
+	} else if (app_config.show_volume && icon_index == volume_slot) {
 		if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
 			if (verbose)
 				printf("[DBG] Scroll %s on volume widget (steps=%d)\n",
@@ -492,6 +582,9 @@ pointer_axis_discrete(void *data, struct wl_pointer *wl_pointer, uint32_t axis,
 			volume_handle_scroll(discrete < 0);
 			volume_repaint_tile(surface);
 		}
+	} else if (net_slot >= 0 && icon_index == net_slot) {
+		if (verbose)
+			printf("[DBG] Scroll %s on net widget (no action)\n", direction);
 	} else if (date_slot >= 0 && icon_index == date_slot) {
 		if (verbose)
 			printf("[DBG] Scroll %s on date widget (no action)\n", direction);

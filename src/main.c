@@ -100,42 +100,56 @@ int last_hovered_icon = -1;
 // ---------------------------------------------------------------------------
 // get_total_widget_count
 //
-// Returns the total number of icon slots: apps + optional volume + optional
-// date + optional net widgets.
+// Returns the total number of icon slots: net + apps + volume + date.
 // ---------------------------------------------------------------------------
 static int
 get_total_widget_count(void)
 {
-	return app_config.count + (app_config.show_volume ? 1 : 0) +
-		(app_config.show_date ? 1 : 0) + (app_config.show_net ? 1 : 0);
-}
-
-// ---------------------------------------------------------------------------
-// get_date_slot_index
-//
-// Returns the slot index of the date widget, or -1 if disabled.
-// ---------------------------------------------------------------------------
-int
-get_date_slot_index(void)
-{
-	if (!app_config.show_date)
-		return -1;
-	return app_config.count + (app_config.show_volume ? 1 : 0);
+	return (app_config.show_net ? 1 : 0) + app_config.count +
+		(app_config.show_volume ? 1 : 0) + (app_config.show_date ? 1 : 0);
 }
 
 // ---------------------------------------------------------------------------
 // get_net_slot_index
 //
 // Returns the slot index of the network widget, or -1 if disabled.
-// The network widget is always the last slot (after date if present).
+// Net is always the first slot.
 // ---------------------------------------------------------------------------
-static int
+int
 get_net_slot_index(void)
 {
 	if (!app_config.show_net)
 		return -1;
-	return app_config.count + (app_config.show_volume ? 1 : 0) +
-		(app_config.show_date ? 1 : 0);
+	return 0;
+}
+
+// ---------------------------------------------------------------------------
+// get_volume_slot_index
+//
+// Returns the slot index of the volume widget, or -1 if disabled.
+// Volume sits immediately after the app icons.
+// ---------------------------------------------------------------------------
+int
+get_volume_slot_index(void)
+{
+	if (!app_config.show_volume)
+		return -1;
+	return (app_config.show_net ? 1 : 0) + app_config.count;
+}
+
+// ---------------------------------------------------------------------------
+// get_date_slot_index
+//
+// Returns the slot index of the date widget, or -1 if disabled.
+// Date is always the last slot.
+// ---------------------------------------------------------------------------
+int
+get_date_slot_index(void)
+{
+	if (!app_config.show_date)
+		return -1;
+	return (app_config.show_net ? 1 : 0) + app_config.count +
+		(app_config.show_volume ? 1 : 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -159,9 +173,7 @@ get_icon_at_position(double coord)
 
 	int icon_size = app_config.icon_size;
 	int spacing = app_config.icon_spacing;
-	int date_slot = app_config.show_date ?
-		(app_config.count + (app_config.show_volume ? 1 : 0)) :
-		-1;
+	int date_slot = get_date_slot_index();
 	int net_slot = get_net_slot_index();
 	int total_count = get_total_widget_count();
 
@@ -195,9 +207,7 @@ get_offset_for_icon(int icon_index)
 
 	int icon_size = app_config.icon_size;
 	int spacing = app_config.icon_spacing;
-	int date_slot = app_config.show_date ?
-		(app_config.count + (app_config.show_volume ? 1 : 0)) :
-		-1;
+	int date_slot = get_date_slot_index();
 	int net_slot = get_net_slot_index();
 
 	int pos = 0;
@@ -628,9 +638,8 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 		// Clear the entire buffer to transparent
 		memset(pixels, 0, phys_width * phys_height * 4);
 
-		// Physical icon and spacing sizes
+		// Physical icon size
 		int icon_size = app_config.icon_size * buffer_scale;
-		int icon_spacing = app_config.icon_spacing * buffer_scale;
 
 		// Determine if bar is horizontal or vertical
 		int is_vertical = (app_config.position == POSITION_LEFT ||
@@ -638,8 +647,10 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 
 		if (is_vertical) {
 			// Draw each application icon vertically (top to bottom)
-			int y_offset = 0;
+			int app_first_slot = (app_config.show_net ? 1 : 0);
 			for (int i = 0; i < app_config.count; i++) {
+				int y_offset =
+					get_offset_for_icon(app_first_slot + i) * buffer_scale;
 				if (y_offset + icon_size > phys_height)
 					break; // Don't draw beyond buffer height
 
@@ -682,7 +693,6 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 					}
 
 					free(text_overlay);
-					y_offset += icon_size + icon_spacing;
 				}
 			}
 
@@ -696,9 +706,7 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 					volume_get_label(label, sizeof(label), percent, muted);
 
 				draw_tile(volume_get_icon_path(percent, muted), label,
-					app_config.count, is_vertical);
-
-				y_offset += icon_size + icon_spacing;
+					get_volume_slot_index(), is_vertical);
 			}
 
 			// Draw date widget tile if enabled
@@ -746,8 +754,10 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 			}
 		} else {
 			// Draw each application icon horizontally (left to right)
-			int x_offset = 0;
+			int app_first_slot = (app_config.show_net ? 1 : 0);
 			for (int i = 0; i < app_config.count; i++) {
+				int x_offset =
+					get_offset_for_icon(app_first_slot + i) * buffer_scale;
 				if (x_offset + icon_size > phys_width)
 					break; // Don't draw beyond buffer width
 
@@ -790,7 +800,6 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 					}
 
 					free(text_overlay);
-					x_offset += icon_size + icon_spacing;
 				}
 			}
 
@@ -804,9 +813,7 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 					volume_get_label(label, sizeof(label), percent, muted);
 
 				draw_tile(volume_get_icon_path(percent, muted), label,
-					app_config.count, is_vertical);
-
-				x_offset += icon_size + icon_spacing;
+					get_volume_slot_index(), is_vertical);
 			}
 
 			// Draw date widget tile if enabled

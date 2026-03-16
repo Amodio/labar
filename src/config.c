@@ -213,8 +213,8 @@ find_best_icon(const char *icon_name)
 	if (!icon_name || strlen(icon_name) == 0)
 		return NULL;
 
-	if (verbose >= 2)
-		printf("[DBG²] Finding best icon for '%s'\n", icon_name);
+	if (verbose >= 3)
+		printf("[DBG³] Finding best icon for '%s'\n", icon_name);
 
 	IconCandidate *candidates = NULL;
 	int candidate_count = 0;
@@ -533,6 +533,8 @@ parse_config_file(FILE *fp)
 	DesktopEntry *current_entry = NULL;
 	int in_apps_section = 0;
 	int in_global_section = 0;
+	int in_widget_date_section = 0;
+	int in_widget_net_section = 0;
 
 	if (verbose >= 2)
 		printf("[DBG²] Parsing config file\n");
@@ -602,6 +604,8 @@ parse_config_file(FILE *fp)
 				if (strncmp(line, "[global]", 8) == 0) {
 					in_global_section = 1;
 					in_apps_section = 0;
+					in_widget_date_section = 0;
+					in_widget_net_section = 0;
 					if (verbose >= 2)
 						printf("[DBG²] Entering "
 							   "[global] section\n");
@@ -612,15 +616,33 @@ parse_config_file(FILE *fp)
 				} else if (strncmp(line, "[apps]", 6) == 0) {
 					in_global_section = 0;
 					in_apps_section = 1;
+					in_widget_date_section = 0;
+					in_widget_net_section = 0;
 					if (verbose >= 2)
 						printf("[DBG²] Entering [apps] "
 							   "section\n");
 					if (verbose >= 2)
 						printf("[DBG²] Processing "
 							   "applications\n");
+				} else if (strncmp(line, "[widget-date]", 13) == 0) {
+					in_global_section = 0;
+					in_apps_section = 0;
+					in_widget_date_section = 1;
+					in_widget_net_section = 0;
+					if (verbose >= 2)
+						printf("[DBG²] Entering [widget-date] section\n");
+				} else if (strncmp(line, "[widget-net]", 12) == 0) {
+					in_global_section = 0;
+					in_apps_section = 0;
+					in_widget_date_section = 0;
+					in_widget_net_section = 1;
+					if (verbose >= 2)
+						printf("[DBG²] Entering [widget-net] section\n");
 				} else {
 					in_global_section = 0;
 					in_apps_section = 0;
+					in_widget_date_section = 0;
+					in_widget_net_section = 0;
 					if (verbose >= 2)
 						printf("[DBG²] Unknown "
 							   "section: %s\n",
@@ -726,41 +748,6 @@ parse_config_file(FILE *fp)
 				if (verbose >= 2)
 					printf("[DBG²]   show-net: %s\n",
 						cfg.show_net ? "true" : "false");
-			} else if (strcmp(key, "widget-net-iface") == 0) {
-				free(cfg.net_iface);
-				cfg.net_iface = strdup(value);
-				if (verbose >= 2)
-					printf("[DBG²]   widget-net-iface: %s\n", cfg.net_iface);
-			} else if (strcmp(key, "widget-net-rx-color") == 0) {
-				const char *hex = value;
-				if (hex[0] == '#')
-					hex++;
-				unsigned long parsed = strtoul(hex, NULL, 16);
-				if (strlen(hex) <= 6)
-					cfg.net_rx_color = 0xFF000000 | (unsigned int)parsed;
-				else
-					cfg.net_rx_color =
-						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
-				if (verbose >= 2)
-					printf("[DBG²]   widget-net-rx-color: 0x%08X\n",
-						cfg.net_rx_color);
-			} else if (strcmp(key, "widget-net-tx-color") == 0) {
-				const char *hex = value;
-				if (hex[0] == '#')
-					hex++;
-				unsigned long parsed = strtoul(hex, NULL, 16);
-				if (strlen(hex) <= 6)
-					cfg.net_tx_color = 0xFF000000 | (unsigned int)parsed;
-				else
-					cfg.net_tx_color =
-						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
-				if (verbose >= 2)
-					printf("[DBG²]   widget-net-tx-color: 0x%08X\n",
-						cfg.net_tx_color);
-			} else if (strcmp(key, "widget-net-size") == 0) {
-				cfg.net_font_size = atoi(value);
-				if (verbose >= 2)
-					printf("[DBG²]   widget-net-size: %d\n", cfg.net_font_size);
 			} else if (strcmp(key, "widget-net-bg-color") == 0) {
 				const char *hex = value;
 				if (hex[0] == '#')
@@ -774,13 +761,19 @@ parse_config_file(FILE *fp)
 				if (verbose >= 2)
 					printf("[DBG²]   widget-net-bg-color: 0x%08X\n",
 						cfg.net_bg_color);
-			} else if (strcmp(key, "widget-date-format") == 0) {
+			}
+			continue;
+		}
+
+		// Handle [widget-date] section
+		if (in_widget_date_section) {
+			if (strcmp(key, "format") == 0) {
 				free(cfg.date_date_format);
 				cfg.date_date_format = strdup(value);
 				if (verbose >= 2)
-					printf("[DBG²]   widget-date-format: %s\n",
+					printf("[DBG²]   widget-date format: %s\n",
 						cfg.date_date_format);
-			} else if (strcmp(key, "widget-date-color") == 0) {
+			} else if (strcmp(key, "color") == 0) {
 				const char *hex = value;
 				if (hex[0] == '#')
 					hex++;
@@ -791,20 +784,20 @@ parse_config_file(FILE *fp)
 					cfg.date_date_color =
 						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
 				if (verbose >= 2)
-					printf("[DBG²]   widget-date-color: 0x%08X\n",
+					printf("[DBG²]   widget-date color: 0x%08X\n",
 						cfg.date_date_color);
-			} else if (strcmp(key, "widget-date-size") == 0) {
+			} else if (strcmp(key, "size") == 0) {
 				cfg.date_date_size = atoi(value);
 				if (verbose >= 2)
-					printf("[DBG²]   widget-date-size: %d\n",
+					printf("[DBG²]   widget-date size: %d\n",
 						cfg.date_date_size);
-			} else if (strcmp(key, "widget-date-time-format") == 0) {
+			} else if (strcmp(key, "time-format") == 0) {
 				free(cfg.date_time_format);
 				cfg.date_time_format = strdup(value);
 				if (verbose >= 2)
-					printf("[DBG²]   widget-date-time-format: %s\n",
+					printf("[DBG²]   widget-date time-format: %s\n",
 						cfg.date_time_format);
-			} else if (strcmp(key, "widget-date-time-color") == 0) {
+			} else if (strcmp(key, "time-color") == 0) {
 				const char *hex = value;
 				if (hex[0] == '#')
 					hex++;
@@ -815,28 +808,80 @@ parse_config_file(FILE *fp)
 					cfg.date_time_color =
 						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
 				if (verbose >= 2)
-					printf("[DBG²]   widget-date-time-color: 0x%08X\n",
+					printf("[DBG²]   widget-date time-color: 0x%08X\n",
 						cfg.date_time_color);
-			} else if (strcmp(key, "widget-date-time-size") == 0) {
+			} else if (strcmp(key, "time-size") == 0) {
 				cfg.date_time_size = atoi(value);
 				if (verbose >= 2)
-					printf("[DBG²]   widget-date-time-size: %d\n",
+					printf("[DBG²]   widget-date time-size: %d\n",
 						cfg.date_time_size);
-			} else if (strcmp(key, "widget-date-bg-color") == 0) {
+			} else if (strcmp(key, "bg-color") == 0) {
 				const char *hex = value;
 				if (hex[0] == '#')
 					hex++;
 				unsigned long parsed = strtoul(hex, NULL, 16);
 				if (strlen(hex) <= 6)
-					// #RRGGBB → 0xFFRRGGBB (fully opaque)
 					cfg.date_bg_color = 0xFF000000 | (unsigned int)parsed;
 				else
-					// #RRGGBBAA → swap to internal 0xAARRGGBB
 					cfg.date_bg_color =
 						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
 				if (verbose >= 2)
-					printf("[DBG²]   widget-date-bg-color: 0x%08X\n",
+					printf("[DBG²]   widget-date bg-color: 0x%08X\n",
 						cfg.date_bg_color);
+			}
+			continue;
+		}
+
+		// Handle [widget-net] section
+		if (in_widget_net_section) {
+			if (strcmp(key, "iface") == 0) {
+				free(cfg.net_iface);
+				cfg.net_iface = strdup(value);
+				if (verbose >= 2)
+					printf("[DBG²]   widget-net iface: %s\n", cfg.net_iface);
+			} else if (strcmp(key, "rx-color") == 0) {
+				const char *hex = value;
+				if (hex[0] == '#')
+					hex++;
+				unsigned long parsed = strtoul(hex, NULL, 16);
+				if (strlen(hex) <= 6)
+					cfg.net_rx_color = 0xFF000000 | (unsigned int)parsed;
+				else
+					cfg.net_rx_color =
+						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
+				if (verbose >= 2)
+					printf("[DBG²]   widget-net rx-color: 0x%08X\n",
+						cfg.net_rx_color);
+			} else if (strcmp(key, "tx-color") == 0) {
+				const char *hex = value;
+				if (hex[0] == '#')
+					hex++;
+				unsigned long parsed = strtoul(hex, NULL, 16);
+				if (strlen(hex) <= 6)
+					cfg.net_tx_color = 0xFF000000 | (unsigned int)parsed;
+				else
+					cfg.net_tx_color =
+						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
+				if (verbose >= 2)
+					printf("[DBG²]   widget-net tx-color: 0x%08X\n",
+						cfg.net_tx_color);
+			} else if (strcmp(key, "size") == 0) {
+				cfg.net_font_size = atoi(value);
+				if (verbose >= 2)
+					printf("[DBG²]   widget-net size: %d\n", cfg.net_font_size);
+			} else if (strcmp(key, "bg-color") == 0) {
+				const char *hex = value;
+				if (hex[0] == '#')
+					hex++;
+				unsigned long parsed = strtoul(hex, NULL, 16);
+				if (strlen(hex) <= 6)
+					cfg.net_bg_color = 0xFF000000 | (unsigned int)parsed;
+				else
+					cfg.net_bg_color =
+						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
+				if (verbose >= 2)
+					printf("[DBG²]   widget-net bg-color: 0x%08X\n",
+						cfg.net_bg_color);
 			}
 			continue;
 		}
@@ -1075,41 +1120,23 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp, "#   true:  show the date/time widget (default)\n");
 	fprintf(fp, "#   false: no date/time widget\n");
 	fprintf(fp, "show-date=true\n");
-	fprintf(fp, "# date/time widget — line 1 (date) style\n");
-	fprintf(fp,
-		"#   widget-date-format: strftime(3) format, e.g. \"%%a %%d %%B\"\n");
-	fprintf(fp, "widget-date-format=%%a %%d %%B\n");
-	fprintf(fp, "widget-date-color=#68FF3A\n");
-	fprintf(fp, "widget-date-size=16\n");
-	fprintf(fp, "# date/time widget — line 2 (time) style\n");
-	fprintf(fp,
-		"#   widget-date-time-format: strftime(3) format, e.g. \"%%H:%%M\"\n");
-	fprintf(fp, "widget-date-time-format=%%H:%%M\n");
-	fprintf(fp, "widget-date-time-color=#FF0000\n");
-	fprintf(fp, "widget-date-time-size=36\n");
-	fprintf(fp,
-		"# widget-date-bg-color: background color for the date/time tile\n");
-	fprintf(fp, "#   format: #RRGGBBAA (alpha in last byte)\n");
-	fprintf(fp, "#   e.g. #00000094 = black 42%% transparent (default)\n");
-	fprintf(fp, "#        #00000000 = fully transparent\n");
-	fprintf(fp, "#        #000000FF = fully opaque black\n");
-	fprintf(fp, "widget-date-bg-color=#00000094\n");
 	fprintf(fp,
 		"# show-net: append a network speed text slot at the end of the bar\n");
-	fprintf(fp, "#   true:  show the network widget\n");
-	fprintf(fp, "#   false: no network widget (default)\n");
+	fprintf(fp, "#   true:  show the network widget (default)\n");
+	fprintf(fp, "#   false: no network widget\n");
 	fprintf(fp, "show-net=true\n");
+	fprintf(fp, "\n[widget-net]\n");
 	fprintf(fp,
-		"# widget-net-iface: network interface to monitor (omit for auto-detect)\n");
-	fprintf(fp, "# widget-net-iface=eth0\n");
-	fprintf(fp, "# widget-net-rx-color: color for the receive speed line\n");
-	fprintf(fp, "widget-net-rx-color=#4FC3F7\n");
-	fprintf(fp, "# widget-net-tx-color: color for the transmit speed line\n");
-	fprintf(fp, "widget-net-tx-color=#EF9A9A\n");
-	fprintf(fp, "# widget-net-size: font size in pt for the speed lines\n");
-	fprintf(fp, "widget-net-size=9\n");
-	fprintf(fp, "# widget-net-bg-color: background color for the net tile\n");
-	fprintf(fp, "widget-net-bg-color=#00000094\n");
+		"# iface: network interface to monitor (omit for auto-detect)\n");
+	fprintf(fp, "# iface=eth0\n");
+	fprintf(fp, "# rx-color: color for the receive speed line\n");
+	fprintf(fp, "rx-color=#FF3FFA\n");
+	fprintf(fp, "# tx-color: color for the transmit speed line\n");
+	fprintf(fp, "tx-color=#3AFFFD\n");
+	fprintf(fp, "# size: font size in pt for the speed lines\n");
+	fprintf(fp, "size=14\n");
+	fprintf(fp, "# bg-color: tile background color (#RRGGBBAA)\n");
+	fprintf(fp, "bg-color=#00000094\n");
 	fprintf(fp, "\n[apps]\n");
 
 	int written = 0;
@@ -1133,6 +1160,22 @@ write_default_config(DesktopEntry **entries, int count)
 		free(icon_path);
 		written++;
 	}
+
+	fprintf(fp, "\n[widget-date]\n");
+	fprintf(fp, "# Date line (upper half of the tile)\n");
+	fprintf(fp, "# format: strftime(3) format string, e.g. \"%%a %%d %%B\"\n");
+	fprintf(fp, "format=%%a %%d %%B\n");
+	fprintf(fp, "color=#68FF3A\n");
+	fprintf(fp, "size=16\n");
+	fprintf(fp, "# Time line (lower half of the tile)\n");
+	fprintf(fp, "# time-format: strftime(3) format string, e.g. \"%%H:%%M\"\n");
+	fprintf(fp, "time-format=%%H:%%M\n");
+	fprintf(fp, "time-color=#FF0000\n");
+	fprintf(fp, "time-size=36\n");
+	fprintf(fp, "# bg-color: tile background color (#RRGGBBAA)\n");
+	fprintf(fp, "#   #00000094 = black 42%% transparent (default)\n");
+	fprintf(fp, "#   #00000000 = fully transparent\n");
+	fprintf(fp, "bg-color=#00000094\n");
 
 	if (verbose >= 3)
 		printf("[I/O] FCLOSE: %s\n", config_path);
