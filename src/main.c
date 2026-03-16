@@ -18,6 +18,9 @@
 #include <wayland-client.h>
 #include "cache.h"
 #include "config.h"
+#ifdef HAVE_GTK4
+#include "config-window.h"
+#endif
 #include "exec.h"
 #include "seat.h"
 #include "widget-date.h"
@@ -999,9 +1002,9 @@ main(int argc, char *argv[])
 	int opt;
 	static struct option long_options[] = {{"help", no_argument, 0, 'h'},
 		{"verbose", no_argument, 0, 'v'}, {"version", no_argument, 0, 'V'},
-		{0, 0, 0, 0}};
+		{"config", no_argument, 0, 'c'}, {0, 0, 0, 0}};
 
-	while ((opt = getopt_long(argc, argv, "hvV", long_options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "hvVc", long_options, NULL)) != -1) {
 		switch (opt) {
 		case 'h':
 			printf(
@@ -1011,9 +1014,9 @@ main(int argc, char *argv[])
 				"  -h, --help       Show this help message and exit\n"
 				"  -v, --verbose    Increase verbosity (use up to 4 times)\n"
 				"  -V, --version    Print version and exit\n"
-				"\n"
-				"labar reads its configuration from:\n"
-				"  $XDG_CONFIG_HOME/labar/labar.cfg  (or ~/.config/labar/labar.cfg)\n",
+				"  -c, --config     Open the graphical configuration window\n"
+				"\nlabar reads its configuration from:\n"
+				"  ~/.config/labar/labar.cfg\n",
 				argv[0]);
 			return 0;
 		case 'v':
@@ -1022,9 +1025,18 @@ main(int argc, char *argv[])
 		case 'V':
 			printf("%s\n", VERSION);
 			return 0;
+#ifdef HAVE_GTK4
+		case 'c':
+			return config_window_run();
+#else
+		case 'c':
+			fprintf(stderr,
+				"labar was built without GTK4; --config is not available.\n");
+			return 1;
+#endif
 		default:
 			fprintf(stderr,
-				"Usage: %s [-h|--help] [-v|--verbose] [-V|--version]\n",
+				"Usage: %s [-h|--help] [-v|--verbose] [-V|--version] [-c|--config]\n",
 				argv[0]);
 			return 1;
 		}

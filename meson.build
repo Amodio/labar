@@ -12,6 +12,23 @@ librsvg_dep = dependency('librsvg-2.0')
 # ALSA for volume control
 alsa_dep = dependency('alsa')
 
+# GTK4 for the --config graphical configuration window (optional)
+gtk4_dep = dependency('gtk4', required: false)
+have_gtk4 = gtk4_dep.found()
+
+extra_sources = []
+extra_deps    = []
+extra_cargs   = []
+
+if have_gtk4
+  extra_sources += 'src/config-window.c'
+  extra_deps    += gtk4_dep
+  extra_cargs   += '-DHAVE_GTK4=1'
+  message('GTK4 found — building --config window')
+else
+  message('GTK4 not found — --config window disabled')
+endif
+
 # Build wayland-protocols code (generated from XML)
 subdir('protocols')
 
@@ -32,16 +49,19 @@ executable(
   'src/cache.c',
   'src/widget-volume.c',
   'src/widget-date.c',
+  extra_sources,
   dependencies: [
     wayland_client,
     wl_protocols,
     cairo_dep,
     librsvg_dep,
     alsa_dep,
+    extra_deps,
   ],
   c_args: [
     '-DVERSION="' + meson.project_name() + ' ' + meson.project_version() + '"',
     '-DVOLUME_PIXMAP_DIR="' + pixmap_dir + '"',
+    extra_cargs,
   ],
   install: true
 )

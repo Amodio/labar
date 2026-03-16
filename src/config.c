@@ -965,11 +965,6 @@ write_default_config(DesktopEntry **entries, int count)
 		return 0;
 	}
 
-	fprintf(fp, "# labar default configuration\n");
-	fprintf(fp,
-		"# Edit this file to add or remove applications from the "
-		"bar\n\n");
-
 	fprintf(fp, "[global]\n");
 	fprintf(fp, "# exclusive-zone: interaction with other surfaces\n");
 	fprintf(fp, "#    0: surface will be moved to avoid occluding\n");
