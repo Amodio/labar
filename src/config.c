@@ -279,7 +279,7 @@ find_best_icon(const char *icon_name)
 							 // priority)
 					candidate_count++;
 				} else {
-					if (verbose >= 3)
+					if (verbose >= 4)
 						printf("[I/O] ACCESS CHECK (stat): %s - NOT FOUND\n",
 							svg_path);
 					free(svg_path);
@@ -289,7 +289,7 @@ find_best_icon(const char *icon_name)
 				icon_name, "png");
 			if (png_path) {
 				if (access(png_path, F_OK) == 0) {
-					if (verbose >= 3)
+					if (verbose >= 4)
 						printf("[I/O] ACCESS CHECK (stat): %s - EXISTS\n",
 							png_path);
 					// Extract size from directory name
@@ -316,7 +316,7 @@ find_best_icon(const char *icon_name)
 					candidates[candidate_count].size = size;
 					candidate_count++;
 				} else {
-					if (verbose >= 3)
+					if (verbose >= 4)
 						printf("[I/O] ACCESS CHECK (stat): %s - NOT FOUND\n",
 							png_path);
 					free(png_path);
@@ -328,7 +328,7 @@ find_best_icon(const char *icon_name)
 		free(theme_path);
 	}
 
-	if (verbose >= 3)
+	if (verbose >= 4)
 		printf("[I/O] CLOSEDIR: /usr/share/icons (base theme dir)\n");
 	closedir(base_dir);
 
@@ -381,11 +381,11 @@ DesktopEntry **
 list_all_applications(int *count_out)
 {
 	const char *app_dir = APPS_DIR;
-	if (verbose >= 3)
+	if (verbose >= 4)
 		printf("[I/O] OPENDIR: %s\n", app_dir);
 	DIR *dir = opendir(app_dir);
 	if (!dir) {
-		if (verbose >= 3)
+		if (verbose >= 4)
 			printf("[I/O] OPENDIR FAILED: %s\n", app_dir);
 		perror("opendir");
 		*count_out = 0;
@@ -434,7 +434,7 @@ list_all_applications(int *count_out)
 		entries[count++] = parsed;
 	}
 
-	if (verbose >= 3)
+	if (verbose >= 4)
 		printf("[I/O] CLOSEDIR: %s\n", app_dir);
 	closedir(dir);
 	*count_out = count;
@@ -488,7 +488,7 @@ config_file_exists(void)
 	snprintf(config_path, sizeof(config_path), "%s/" CONFIG_DIR "/" CONFIG_NAME,
 		home);
 
-	if (verbose >= 3)
+	if (verbose >= 4)
 		printf("[I/O] ACCESS CHECK (stat): %s\n", config_path);
 	return access(config_path, F_OK) == 0;
 }
@@ -525,6 +525,11 @@ parse_config_file(FILE *fp)
 	cfg.net_font_size = 0;			   // Falls back to WIDGET_NET_FONT_SIZE
 	cfg.net_bg_color = 0x33000000;	   // dark, 80% transparent by default
 	cfg.net_tile_width = 0; // Set after load by net_compute_tile_size()
+	// Default widget order: net(0), apps(3), volume(1), date(2)
+	cfg.widget_order[0] = 0; // net   first
+	cfg.widget_order[1] = 3; // apps  second
+	cfg.widget_order[2] = 1; // volume third
+	cfg.widget_order[3] = 2; // date  last
 	if (!cfg.apps)
 		return cfg;
 
@@ -748,6 +753,40 @@ parse_config_file(FILE *fp)
 				if (verbose >= 2)
 					printf("[DBG²]   show-net: %s\n",
 						cfg.show_net ? "true" : "false");
+			} else if (strcmp(key, "widget-order") == 0) {
+				// Format: "net,apps,volume,date" — any permutation of the
+				// four token names; missing tokens keep their default position.
+				const char *names[4] = {"net", "volume", "date", "apps"};
+				int order[4] = {0, 3, 1, 2}; // default
+				char tmp[64];
+				strncpy(tmp, value, sizeof(tmp) - 1);
+				tmp[sizeof(tmp) - 1] = '\0';
+				char *tok = tmp;
+				for (int i = 0; i < 4; i++) {
+					while (*tok == ' ' || *tok == ',')
+						tok++;
+					if (!*tok)
+						break;
+					char *end = tok;
+					while (*end && *end != ',')
+						end++;
+					char saved = *end;
+					*end = '\0';
+					for (int j = 0; j < 4; j++) {
+						if (strcmp(tok, names[j]) == 0) {
+							order[i] = j;
+							break;
+						}
+					}
+					*end = saved;
+					tok = end;
+				}
+				for (int i = 0; i < 4; i++)
+					cfg.widget_order[i] = order[i];
+				if (verbose >= 2)
+					printf("[DBG²]   widget-order: %s,%s,%s,%s\n",
+						names[cfg.widget_order[0]], names[cfg.widget_order[1]],
+						names[cfg.widget_order[2]], names[cfg.widget_order[3]]);
 			} else if (strcmp(key, "widget-net-bg-color") == 0) {
 				const char *hex = value;
 				if (hex[0] == '#')
@@ -1111,31 +1150,27 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp, "#   top (default):    above normal windows\n");
 	fprintf(fp, "#   overlay:          on top of everything\n");
 	fprintf(fp, "layer=top\n");
-	fprintf(fp, "# show-volume: append a volume icon at the end of the bar\n");
-	fprintf(fp, "#   true:  show the volume widget (default)\n");
-	fprintf(fp, "#   false: no volume widget\n");
-	fprintf(fp, "show-volume=true\n");
-	fprintf(fp,
-		"# show-date: append a date/time text slot at the end of the bar\n");
-	fprintf(fp, "#   true:  show the date/time widget (default)\n");
-	fprintf(fp, "#   false: no date/time widget\n");
-	fprintf(fp, "show-date=true\n");
-	fprintf(fp,
-		"# show-net: append a network speed text slot at the end of the bar\n");
-	fprintf(fp, "#   true:  show the network widget (default)\n");
-	fprintf(fp, "#   false: no network widget\n");
+	fprintf(fp, "# show-net: show the network speed widget (first slot)\n");
 	fprintf(fp, "show-net=true\n");
+	fprintf(fp, "# show-volume: show the volume widget (after apps)\n");
+	fprintf(fp, "show-volume=true\n");
+	fprintf(fp, "# show-date: show the date/time widget (last slot)\n");
+	fprintf(fp, "show-date=true\n");
+	fprintf(fp, "# widget-order: bar order of widgets and app icons\n");
+	fprintf(fp, "widget-order=net,apps,volume,date\n");
 	fprintf(fp, "\n[widget-net]\n");
 	fprintf(fp,
 		"# iface: network interface to monitor (omit for auto-detect)\n");
 	fprintf(fp, "# iface=eth0\n");
-	fprintf(fp, "# rx-color: color for the receive speed line\n");
+	fprintf(fp, "# rx-color: color for the receive (down) speed line\n");
 	fprintf(fp, "rx-color=#FF3FFA\n");
-	fprintf(fp, "# tx-color: color for the transmit speed line\n");
+	fprintf(fp, "# tx-color: color for the transmit (up) speed line\n");
 	fprintf(fp, "tx-color=#3AFFFD\n");
 	fprintf(fp, "# size: font size in pt for the speed lines\n");
 	fprintf(fp, "size=14\n");
 	fprintf(fp, "# bg-color: tile background color (#RRGGBBAA)\n");
+	fprintf(fp, "#   #00000094 = black 42%% transparent (default)\n");
+	fprintf(fp, "#   #00000000 = fully transparent\n");
 	fprintf(fp, "bg-color=#00000094\n");
 	fprintf(fp, "\n[apps]\n");
 

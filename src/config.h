@@ -146,6 +146,15 @@ typedef struct {
 	int net_font_size;		   // font size in pt (0 = use default)
 	unsigned int net_bg_color; // ARGB tile background (0 = transparent)
 	int net_tile_width;		   // computed tile width (set after load)
+
+	// ---------------------------------------------------------------------------
+	// Widget ordering
+	//
+	// widget_order[0..3] stores the four slot IDs in their on-bar order.
+	// IDs: 0 = net, 1 = volume, 2 = date, 3 = apps.
+	// Default order: net(0), apps(3), volume(1), date(2).
+	// ---------------------------------------------------------------------------
+	int widget_order[4]; // bar order of widgets + apps block
 } Config;
 
 // List all valid applications from /usr/share/applications/*.desktop

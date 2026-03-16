@@ -19,6 +19,9 @@ extern int verbose;
  * ======================================================================= */
 typedef struct _CfgWin CfgWin;
 static void refresh_apps_list(CfgWin *w);
+static void refresh_widgets_list(CfgWin *w);
+static void harvest_widget_fields(CfgWin *w);
+
 static void on_icon_preview_slot_free(gpointer data);
 static void on_icon_entry_changed(GtkEditable *editable, gpointer user_data);
 static void on_icon_path_btn_clicked(GtkButton *btn, gpointer user_data);
@@ -47,7 +50,7 @@ local_find_best_icon(const char *icon_name)
 
 	/* Search /usr/share/icons (2 levels: theme / size-dir / apps/) */
 	const char *base = "/usr/share/icons";
-	if (verbose >= 3)
+	if (verbose >= 4)
 		fprintf(stderr, "[I/O] OPENDIR: %s\n", base);
 	DIR *bd = opendir(base);
 	if (!bd)
@@ -63,7 +66,7 @@ local_find_best_icon(const char *icon_name)
 		char *tpath = NULL;
 		if (asprintf(&tpath, "%s/%s", base, theme->d_name) < 0)
 			continue;
-		if (verbose >= 3)
+		if (verbose >= 4)
 			fprintf(stderr, "[I/O] OPENDIR: %s\n", tpath);
 		DIR *td = opendir(tpath);
 		if (!td) {
@@ -81,7 +84,7 @@ local_find_best_icon(const char *icon_name)
 				if (asprintf(&spath, "%s/%s/apps/%s.%s", tpath, sz->d_name,
 						icon_name, exts[e]) < 0)
 					continue;
-				if (verbose >= 3)
+				if (verbose >= 4)
 					fprintf(stderr, "[I/O] ACCESS: %s\n", spath);
 				if (access(spath, F_OK) == 0) {
 					int sz_val = (e == 0) ? 9999 : 0;
@@ -98,12 +101,12 @@ local_find_best_icon(const char *icon_name)
 				}
 			}
 		}
-		if (verbose >= 3)
+		if (verbose >= 4)
 			fprintf(stderr, "[I/O] CLOSEDIR: %s\n", tpath);
 		closedir(td);
 		free(tpath);
 	}
-	if (verbose >= 3)
+	if (verbose >= 4)
 		fprintf(stderr, "[I/O] CLOSEDIR: %s\n", base);
 	closedir(bd);
 	if (best)
@@ -116,7 +119,7 @@ pixmaps:;
 		char *p = NULL;
 		if (asprintf(&p, "/usr/share/pixmaps/%s.%s", icon_name, exts2[e]) < 0)
 			continue;
-		if (verbose >= 3)
+		if (verbose >= 4)
 			fprintf(stderr, "[I/O] ACCESS: %s\n", p);
 		if (access(p, F_OK) == 0)
 			return p;
@@ -196,7 +199,7 @@ local_find_all_icons(const char *icon_name)
 	} while (0)
 
 	const char *base_dir = "/usr/share/icons";
-	if (verbose >= 3)
+	if (verbose >= 4)
 		fprintf(stderr, "[I/O] OPENDIR: %s\n", base_dir);
 	DIR *bd = opendir(base_dir);
 	if (bd) {
@@ -207,7 +210,7 @@ local_find_all_icons(const char *icon_name)
 			char *tpath = NULL;
 			if (asprintf(&tpath, "%s/%s", base_dir, theme->d_name) < 0)
 				continue;
-			if (verbose >= 3)
+			if (verbose >= 4)
 				fprintf(stderr, "[I/O] OPENDIR: %s\n", tpath);
 			DIR *td = opendir(tpath);
 			if (!td) {
@@ -228,7 +231,7 @@ local_find_all_icons(const char *icon_name)
 					if (asprintf(&spath, "%s/%s/apps/%s.%s", tpath, szd->d_name,
 							icon_name, exts[e]) < 0)
 						continue;
-					if (verbose >= 3)
+					if (verbose >= 4)
 						fprintf(stderr, "[I/O] ACCESS: %s\n", spath);
 					if (access(spath, F_OK) != 0) {
 						free(spath);
@@ -239,12 +242,12 @@ local_find_all_icons(const char *icon_name)
 					APPEND_ICON(spath, sv);
 				}
 			}
-			if (verbose >= 3)
+			if (verbose >= 4)
 				fprintf(stderr, "[I/O] CLOSEDIR: %s\n", tpath);
 			closedir(td);
 			free(tpath);
 		}
-		if (verbose >= 3)
+		if (verbose >= 4)
 			fprintf(stderr, "[I/O] CLOSEDIR: %s\n", base_dir);
 		closedir(bd);
 	}
@@ -258,7 +261,7 @@ done_scan:;
 			if (asprintf(&p, "/usr/share/pixmaps/%s.%s", icon_name, exts2[e]) <
 				0)
 				continue;
-			if (verbose >= 3)
+			if (verbose >= 4)
 				fprintf(stderr, "[I/O] ACCESS: %s\n", p);
 			if (access(p, F_OK) == 0) {
 				int sv = (e == 1) ? 9999 : 0;
@@ -328,10 +331,12 @@ struct _CfgWin {
 	GtkDropDown *position_drop;
 	GtkDropDown *layer_drop;
 
-	/* Widgets */
+	/* Widgets — reorderable rows */
+	GtkBox *widgets_box; // container rebuilt by refresh_widgets_list()
+	/* Per-widget controls (rebuilt each time; kept here for write_config) */
 	GtkCheckButton *show_volume_check;
 	GtkCheckButton *show_date_check;
-	GtkRevealer *date_revealer;
+	GtkCheckButton *show_net_check;
 	GtkEntry *date_date_format_entry;
 	GtkColorDialogButton *date_date_color_btn;
 	GtkSpinButton *date_date_size_spin;
@@ -339,11 +344,101 @@ struct _CfgWin {
 	GtkColorDialogButton *date_time_color_btn;
 	GtkSpinButton *date_time_size_spin;
 	GtkColorDialogButton *date_bg_color_btn;
+	GtkEntry *net_iface_entry;
+	GtkColorDialogButton *net_rx_color_btn;
+	GtkColorDialogButton *net_tx_color_btn;
+	GtkSpinButton *net_size_spin;
+	GtkColorDialogButton *net_bg_color_btn;
 
 	/* Apps */
 	GtkBox *apps_box;
 	GtkLabel *status_label;
 };
+
+/* =========================================================================
+ * mark_unsaved and change-detection helpers
+ *
+ * Placed here so CfgWin is complete when they are compiled.
+ * ======================================================================= */
+
+/* Clear the "saved" status label — called whenever the user makes a change. */
+static void
+mark_unsaved(CfgWin *w)
+{
+	if (w && w->status_label)
+		gtk_label_set_text(GTK_LABEL(w->status_label), "");
+}
+
+/* Generic signal callbacks that forward to mark_unsaved */
+static void
+on_any_changed(GObject *obj, GParamSpec *ps, gpointer data)
+{
+	(void)obj;
+	(void)ps;
+	mark_unsaved((CfgWin *)data);
+}
+static void
+on_any_text_changed(GtkEditable *e, gpointer data)
+{
+	(void)e;
+	mark_unsaved((CfgWin *)data);
+}
+/* Used for "value-changed" (GtkSpinButton) and "toggled" (GtkCheckButton).
+ * Both deliver (widget*, user_data) so a single void* first-arg works. */
+static void
+on_any_widget_changed(gpointer widget, gpointer data)
+{
+	(void)widget;
+	mark_unsaved((CfgWin *)data);
+}
+
+/* Connect mark_unsaved to a widget depending on its type.
+ * Returns the signal handler ID so the caller can disconnect before
+ * the widget is destroyed (prevents callbacks firing during teardown). */
+static gulong
+connect_mark_unsaved(GtkWidget *widget, CfgWin *w)
+{
+	if (GTK_IS_SPIN_BUTTON(widget))
+		return g_signal_connect(widget, "value-changed",
+			G_CALLBACK(on_any_widget_changed), w);
+	else if (GTK_IS_COLOR_DIALOG_BUTTON(widget))
+		return g_signal_connect(widget, "notify::rgba",
+			G_CALLBACK(on_any_changed), w);
+	else if (GTK_IS_ENTRY(widget))
+		return g_signal_connect(widget, "changed",
+			G_CALLBACK(on_any_text_changed), w);
+	else if (GTK_IS_DROP_DOWN(widget))
+		return g_signal_connect(widget, "notify::selected",
+			G_CALLBACK(on_any_changed), w);
+	else if (GTK_IS_CHECK_BUTTON(widget))
+		return g_signal_connect(widget, "toggled",
+			G_CALLBACK(on_any_widget_changed), w);
+	return 0;
+}
+
+/* Store a (GObject*, handler_id) pair on a frame widget so that
+ * refresh_widgets_list() can disconnect the handler before destroying
+ * the row, preventing callbacks from firing during widget teardown. */
+static void
+store_signal_pair(GtkWidget *frame, GObject *obj, gulong id)
+{
+	if (!id)
+		return;
+	GPtrArray *pairs = g_object_get_data(G_OBJECT(frame), "signal_pairs");
+	if (!pairs) {
+		pairs = g_ptr_array_new();
+		g_object_set_data_full(G_OBJECT(frame), "signal_pairs", pairs,
+			(GDestroyNotify)g_ptr_array_unref);
+	}
+	g_ptr_array_add(pairs, obj);
+	g_ptr_array_add(pairs, (gpointer)(gintptr)id);
+}
+static gboolean
+idle_refresh_widgets(gpointer data)
+{
+	refresh_widgets_list((CfgWin *)data);
+	return G_SOURCE_REMOVE;
+}
 
 /* =========================================================================
  * Colour helpers  0xAARRGGBB <-> GdkRGBA
@@ -485,7 +580,10 @@ write_config(CfgWin *w)
 
 	Config *c = &w->cfg;
 
-	/* Harvest widget values */
+	/* Harvest widget-section values (rebuilding lost pointers) */
+	harvest_widget_fields(w);
+
+	/* Harvest global widget values */
 	c->icon_size = (int)gtk_spin_button_get_value(w->icon_size_spin);
 	c->icon_spacing = (int)gtk_spin_button_get_value(w->icon_spacing_spin);
 	c->exclusive_zone = (int)gtk_spin_button_get_value(w->exclusive_zone_spin);
@@ -497,6 +595,17 @@ write_config(CfgWin *w)
 	c->layer = (Layer)gtk_drop_down_get_selected(w->layer_drop);
 	c->show_volume = gtk_check_button_get_active(w->show_volume_check);
 	c->show_date = gtk_check_button_get_active(w->show_date_check);
+	c->show_net = gtk_check_button_get_active(w->show_net_check);
+
+	/* Net widget fields */
+	const char *niface =
+		gtk_editable_get_text(GTK_EDITABLE(w->net_iface_entry));
+	free(c->net_iface);
+	c->net_iface = (niface && niface[0]) ? strdup(niface) : NULL;
+	c->net_rx_color = read_color_btn(w->net_rx_color_btn);
+	c->net_tx_color = read_color_btn(w->net_tx_color_btn);
+	c->net_font_size = (int)gtk_spin_button_get_value(w->net_size_spin);
+	c->net_bg_color = read_color_btn(w->net_bg_color_btn);
 
 	char *ddf =
 		strdup(gtk_editable_get_text(GTK_EDITABLE(w->date_date_format_entry)));
@@ -558,64 +667,125 @@ write_config(CfgWin *w)
 	fprintf(fp, "#   overlay:          on top of everything\n");
 	fprintf(fp, "layer=%s\n",
 		(unsigned)c->layer < 4 ? lay_str[c->layer] : "top");
-	fprintf(fp, "# show-volume: append a volume icon at the end of the bar\n");
-	fprintf(fp, "#   true:  show the volume widget (default)\n");
-	fprintf(fp, "#   false: no volume widget\n");
+	fprintf(fp, "# show-net: show the network speed widget (first slot)\n");
+	fprintf(fp, "show-net=%s\n", c->show_net ? "true" : "false");
+	fprintf(fp, "# show-volume: show the volume widget (after apps)\n");
 	fprintf(fp, "show-volume=%s\n", c->show_volume ? "true" : "false");
-	fprintf(fp,
-		"# show-date: append a date/time text slot at the end of the bar\n");
-	fprintf(fp, "#   true:  show the date/time widget (default)\n");
-	fprintf(fp, "#   false: no date/time widget\n");
+	fprintf(fp, "# show-date: show the date/time widget (last slot)\n");
 	fprintf(fp, "show-date=%s\n", c->show_date ? "true" : "false");
-	fprintf(fp, "# date/time widget — line 1 (date) style\n");
-	fprintf(fp,
-		"#   widget-date-format: strftime(3) format,"
-		" e.g. \"%%a %%d %%B\"\n");
-	fprintf(fp, "widget-date-format=%s\n",
-		c->date_date_format && c->date_date_format[0] ? c->date_date_format :
-														"%a %d %B");
-	fprint_color(fp, "widget-date-color", c->date_date_color);
-	fprintf(fp, "widget-date-size=%d\n", c->date_date_size);
-	fprintf(fp, "# date/time widget — line 2 (time) style\n");
-	fprintf(fp,
-		"#   widget-date-time-format: strftime(3) format,"
-		" e.g. \"%%H:%%M\"\n");
-	fprintf(fp, "widget-date-time-format=%s\n",
-		c->date_time_format && c->date_time_format[0] ? c->date_time_format :
-														"%H:%M");
-	fprint_color(fp, "widget-date-time-color", c->date_time_color);
-	fprintf(fp, "widget-date-time-size=%d\n", c->date_time_size);
-	fprintf(fp,
-		"# widget-date-bg-color: background color for the date/time tile\n");
-	fprintf(fp, "#   format: #RRGGBBAA (alpha in last byte)\n");
-	fprintf(fp, "#   e.g. #00000094 = black 42%% transparent (default)\n");
-	fprintf(fp, "#        #00000000 = fully transparent\n");
-	fprintf(fp, "#        #000000FF = fully opaque black\n");
-	fprint_color(fp, "widget-date-bg-color", c->date_bg_color);
-
-	fprintf(fp, "\n[apps]\n");
-	GtkWidget *child = gtk_widget_get_first_child(GTK_WIDGET(w->apps_box));
-	while (child) {
-		GtkWidget *ne = g_object_get_data(G_OBJECT(child), "name_entry");
-		GtkWidget *ie = g_object_get_data(G_OBJECT(child), "icon_entry");
-		GtkWidget *ee = g_object_get_data(G_OBJECT(child), "exec_entry");
-		GtkWidget *tcb = g_object_get_data(G_OBJECT(child), "terminal_check");
-		if (ne && ie && ee) {
-			const char *name = gtk_editable_get_text(GTK_EDITABLE(ne));
-			const char *icon = gtk_editable_get_text(GTK_EDITABLE(ie));
-			const char *exec = gtk_editable_get_text(GTK_EDITABLE(ee));
-			int term =
-				tcb ? gtk_check_button_get_active(GTK_CHECK_BUTTON(tcb)) : 0;
-			if (name && name[0] && icon && icon[0] && exec && exec[0]) {
-				fprintf(fp, "name=%s\n", name);
-				fprintf(fp, "icon=%s\n", icon);
-				if (term)
-					fprintf(fp, "terminal=true\n");
-				fprintf(fp, "exec=%s\n\n", exec);
-			}
-		}
-		child = gtk_widget_get_next_sibling(child);
+	fprintf(fp, "# widget-order: bar order of widgets and app icons\n");
+	{
+		static const char *wnames[4] = {"net", "volume", "date", "apps"};
+		fprintf(fp, "widget-order=%s,%s,%s,%s\n", wnames[c->widget_order[0]],
+			wnames[c->widget_order[1]], wnames[c->widget_order[2]],
+			wnames[c->widget_order[3]]);
 	}
+
+	/* Walk widget_order[4] in order, emitting each section.
+	 * WIDGET_ID_APPS (3) triggers the [apps] block. */
+	static const char *wnames[4] = {"net", "volume", "date", "apps"};
+
+#define EMIT_WIDGET_SECTION(wid)                                               \
+	do {                                                                       \
+		if ((wid) == 0) {                                                      \
+			fprintf(fp, "\n[widget-net]\n");                                   \
+			fprintf(fp,                                                        \
+				"# iface: network interface to monitor"                        \
+				" (omit for auto-detect)\n");                                  \
+			if (c->net_iface && c->net_iface[0])                               \
+				fprintf(fp, "iface=%s\n", c->net_iface);                       \
+			else                                                               \
+				fprintf(fp, "# iface=eth0\n");                                 \
+			fprintf(fp,                                                        \
+				"# rx-color: color for the receive (down) speed line\n");      \
+			fprint_color(fp, "rx-color",                                       \
+				c->net_rx_color ? c->net_rx_color : 0xFFFF3FFA);               \
+			fprintf(fp,                                                        \
+				"# tx-color: color for the transmit (up) speed line\n");       \
+			fprint_color(fp, "tx-color",                                       \
+				c->net_tx_color ? c->net_tx_color : 0xFF3AFFFD);               \
+			fprintf(fp, "# size: font size in pt for the speed lines\n");      \
+			fprintf(fp, "size=%d\n",                                           \
+				c->net_font_size > 0 ? c->net_font_size : 14);                 \
+			fprintf(fp, "# bg-color: tile background color (#RRGGBBAA)\n");    \
+			fprintf(fp, "#   #00000094 = black 42%% transparent (default)\n"); \
+			fprintf(fp, "#   #00000000 = fully transparent\n");                \
+			fprint_color(fp, "bg-color",                                       \
+				c->net_bg_color ? c->net_bg_color : 0x94000000);               \
+		} else if ((wid) == 2) {                                               \
+			fprintf(fp, "\n[widget-date]\n");                                  \
+			fprintf(fp, "# Date line (upper half of the tile)\n");             \
+			fprintf(fp,                                                        \
+				"# format: strftime(3) format string,"                         \
+				" e.g. \"%%a %%d %%B\"\n");                                    \
+			fprintf(fp, "format=%s\n",                                         \
+				c->date_date_format && c->date_date_format[0] ?                \
+					c->date_date_format :                                      \
+					"%a %d %B");                                               \
+			fprint_color(fp, "color",                                          \
+				c->date_date_color ? c->date_date_color : 0xFF68FF3A);         \
+			fprintf(fp, "size=%d\n",                                           \
+				c->date_date_size > 0 ? c->date_date_size : 16);               \
+			fprintf(fp, "# Time line (lower half of the tile)\n");             \
+			fprintf(fp,                                                        \
+				"# time-format: strftime(3) format string,"                    \
+				" e.g. \"%%H:%%M\"\n");                                        \
+			fprintf(fp, "time-format=%s\n",                                    \
+				c->date_time_format && c->date_time_format[0] ?                \
+					c->date_time_format :                                      \
+					"%H:%M");                                                  \
+			fprint_color(fp, "time-color",                                     \
+				c->date_time_color ? c->date_time_color : 0xFFFF0000);         \
+			fprintf(fp, "time-size=%d\n",                                      \
+				c->date_time_size > 0 ? c->date_time_size : 36);               \
+			fprintf(fp, "# bg-color: tile background color (#RRGGBBAA)\n");    \
+			fprintf(fp, "#   #00000094 = black 42%% transparent (default)\n"); \
+			fprintf(fp, "#   #00000000 = fully transparent\n");                \
+			fprint_color(fp, "bg-color",                                       \
+				c->date_bg_color ? c->date_bg_color : 0x94000000);             \
+		} else if ((wid) == 3) {                                               \
+			/* Apps block */                                                   \
+			fprintf(fp, "\n[apps]\n");                                         \
+			GtkWidget *_ch =                                                   \
+				gtk_widget_get_first_child(GTK_WIDGET(w->apps_box));           \
+			while (_ch) {                                                      \
+				GtkWidget *_ne =                                               \
+					g_object_get_data(G_OBJECT(_ch), "name_entry");            \
+				GtkWidget *_ie =                                               \
+					g_object_get_data(G_OBJECT(_ch), "icon_entry");            \
+				GtkWidget *_ee =                                               \
+					g_object_get_data(G_OBJECT(_ch), "exec_entry");            \
+				GtkWidget *_tcb =                                              \
+					g_object_get_data(G_OBJECT(_ch), "terminal_check");        \
+				if (_ne && _ie && _ee) {                                       \
+					const char *_nm =                                          \
+						gtk_editable_get_text(GTK_EDITABLE(_ne));              \
+					const char *_ic =                                          \
+						gtk_editable_get_text(GTK_EDITABLE(_ie));              \
+					const char *_ex =                                          \
+						gtk_editable_get_text(GTK_EDITABLE(_ee));              \
+					int _tr = _tcb ?                                           \
+						gtk_check_button_get_active(GTK_CHECK_BUTTON(_tcb)) :  \
+						0;                                                     \
+					if (_nm && _nm[0] && _ic && _ic[0] && _ex && _ex[0]) {     \
+						fprintf(fp, "name=%s\n", _nm);                         \
+						fprintf(fp, "icon=%s\n", _ic);                         \
+						if (_tr)                                               \
+							fprintf(fp, "terminal=true\n");                    \
+						fprintf(fp, "exec=%s\n\n", _ex);                       \
+					}                                                          \
+				}                                                              \
+				_ch = gtk_widget_get_next_sibling(_ch);                        \
+			}                                                                  \
+		}                                                                      \
+		/* volume (wid==1) has no section of its own */                        \
+	} while (0)
+
+	for (int _i = 0; _i < 4; _i++)
+		EMIT_WIDGET_SECTION(c->widget_order[_i]);
+
+#undef EMIT_WIDGET_SECTION
+	(void)wnames;
 
 	if (verbose >= 3)
 		fprintf(stderr, "[I/O] FCLOSE: %s\n", path);
@@ -795,6 +965,7 @@ commit_selected(AddAppCtx *ctx)
 		entry->icon = strdup(de->icon);
 
 	w->cfg.apps[w->cfg.count++] = entry;
+	mark_unsaved(w);
 	refresh_apps_list(w);
 	gtk_window_destroy(ctx->dialog);
 	/* ctx freed by on_add_dialog_destroy — do not touch after this point */
@@ -957,12 +1128,411 @@ on_add_app_clicked(GtkButton *btn, gpointer data)
 	open_add_app_dialog((CfgWin *)data);
 }
 
+static void refresh_widgets_list(CfgWin *w);
+
+/* Harvest current widget-field values from the live GTK widgets into cfg,
+ * so that refresh_widgets_list() (which rebuilds them) picks up the right
+ * defaults on the next build.  Called before any reorder. */
 static void
-on_show_date_toggled(GtkCheckButton *cb, gpointer data)
+harvest_widget_fields(CfgWin *w)
 {
+	if (w->show_volume_check)
+		w->cfg.show_volume = gtk_check_button_get_active(w->show_volume_check);
+	if (w->show_date_check)
+		w->cfg.show_date = gtk_check_button_get_active(w->show_date_check);
+	if (w->show_net_check)
+		w->cfg.show_net = gtk_check_button_get_active(w->show_net_check);
+
+	if (w->date_date_format_entry) {
+		free(w->cfg.date_date_format);
+		w->cfg.date_date_format = strdup(
+			gtk_editable_get_text(GTK_EDITABLE(w->date_date_format_entry)));
+	}
+	if (w->date_date_color_btn)
+		w->cfg.date_date_color = read_color_btn(w->date_date_color_btn);
+	if (w->date_date_size_spin)
+		w->cfg.date_date_size =
+			(int)gtk_spin_button_get_value(w->date_date_size_spin);
+	if (w->date_time_format_entry) {
+		free(w->cfg.date_time_format);
+		w->cfg.date_time_format = strdup(
+			gtk_editable_get_text(GTK_EDITABLE(w->date_time_format_entry)));
+	}
+	if (w->date_time_color_btn)
+		w->cfg.date_time_color = read_color_btn(w->date_time_color_btn);
+	if (w->date_time_size_spin)
+		w->cfg.date_time_size =
+			(int)gtk_spin_button_get_value(w->date_time_size_spin);
+	if (w->date_bg_color_btn)
+		w->cfg.date_bg_color = read_color_btn(w->date_bg_color_btn);
+
+	if (w->net_iface_entry) {
+		free(w->cfg.net_iface);
+		const char *v = gtk_editable_get_text(GTK_EDITABLE(w->net_iface_entry));
+		w->cfg.net_iface = (v && v[0]) ? strdup(v) : NULL;
+	}
+	if (w->net_rx_color_btn)
+		w->cfg.net_rx_color = read_color_btn(w->net_rx_color_btn);
+	if (w->net_tx_color_btn)
+		w->cfg.net_tx_color = read_color_btn(w->net_tx_color_btn);
+	if (w->net_size_spin)
+		w->cfg.net_font_size = (int)gtk_spin_button_get_value(w->net_size_spin);
+	if (w->net_bg_color_btn)
+		w->cfg.net_bg_color = read_color_btn(w->net_bg_color_btn);
+}
+
+static void
+on_widget_move_up(GtkButton *btn, gpointer data)
+{
+	(void)btn;
 	CfgWin *w = (CfgWin *)data;
-	gtk_revealer_set_reveal_child(w->date_revealer,
-		gtk_check_button_get_active(cb));
+	int pos = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(btn), "widget_pos"));
+	if (pos <= 0)
+		return;
+	harvest_widget_fields(w);
+	int tmp = w->cfg.widget_order[pos - 1];
+	w->cfg.widget_order[pos - 1] = w->cfg.widget_order[pos];
+	w->cfg.widget_order[pos] = tmp;
+	mark_unsaved(w);
+	g_idle_add(idle_refresh_widgets, w);
+}
+
+static void
+on_widget_move_down(GtkButton *btn, gpointer data)
+{
+	(void)btn;
+	CfgWin *w = (CfgWin *)data;
+	int pos = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(btn), "widget_pos"));
+	if (pos >= 3)
+		return;
+	harvest_widget_fields(w);
+	int tmp = w->cfg.widget_order[pos + 1];
+	w->cfg.widget_order[pos + 1] = w->cfg.widget_order[pos];
+	w->cfg.widget_order[pos] = tmp;
+	mark_unsaved(w);
+	g_idle_add(idle_refresh_widgets, w);
+}
+
+static void
+on_widget_show_toggled(GtkCheckButton *cb, gpointer data)
+{
+	/* Settings box is stored as "settings_box" on the checkbox */
+	GtkWidget *box =
+		GTK_WIDGET(g_object_get_data(G_OBJECT(cb), "settings_box"));
+	if (box)
+		gtk_widget_set_visible(box, gtk_check_button_get_active(cb));
+	CfgWin *w = (CfgWin *)data;
+	mark_unsaved(w);
+}
+
+/* Build one reorderable widget row for position pos in widget_order. */
+static GtkWidget *
+make_widget_row(CfgWin *w, int pos)
+{
+	int wid = w->cfg.widget_order[pos];
+	int total = 4;
+
+	if (verbose >= 2) {
+		fprintf(stderr,
+			"[config-window] make_widget_row: pos=%d wid=%d "
+			"color_dialog=%p\n",
+			pos, wid, (void *)w->color_dialog);
+		fflush(stderr);
+	}
+
+	/* Outer frame */
+	GtkWidget *frame = gtk_frame_new(NULL);
+	gtk_widget_set_margin_start(frame, 4);
+	gtk_widget_set_margin_end(frame, 4);
+	gtk_widget_set_margin_top(frame, 3);
+	gtk_widget_set_margin_bottom(frame, 3);
+	/* Tag the frame with the widget ID+1 so refresh_widgets_list can find it.
+	 * We store wid+1 because GINT_TO_POINTER(0)==NULL which g_object_get_data
+	 * returns for unset keys, making wid=0 indistinguishable from "not set". */
+	g_object_set_data(G_OBJECT(frame), "widget_id", GINT_TO_POINTER(wid + 1));
+
+	GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+	gtk_widget_set_margin_start(vbox, 8);
+	gtk_widget_set_margin_end(vbox, 8);
+	gtk_widget_set_margin_top(vbox, 6);
+	gtk_widget_set_margin_bottom(vbox, 6);
+	gtk_frame_set_child(GTK_FRAME(frame), vbox);
+
+	/* Header row: [checkbox] [spacer] [▲ Up] [▼ Down] */
+	GtkWidget *hdr = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+	gtk_box_append(GTK_BOX(vbox), hdr);
+
+	const char *label_text = NULL;
+	int show_val = 0;
+	switch (wid) {
+	case 0:
+		label_text = "Network speed widget";
+		show_val = w->cfg.show_net;
+		break;
+	case 1:
+		label_text = "Volume widget";
+		show_val = w->cfg.show_volume;
+		break;
+	case 2:
+		label_text = "Date/time widget";
+		show_val = w->cfg.show_date;
+		break;
+	case 3:
+		label_text = "App icons";
+		show_val = 1;
+		break;
+	}
+
+	GtkCheckButton *cb =
+		GTK_CHECK_BUTTON(gtk_check_button_new_with_label(label_text));
+	gtk_check_button_set_active(cb, show_val);
+	gtk_widget_set_hexpand(GTK_WIDGET(cb), TRUE);
+	gtk_box_append(GTK_BOX(hdr), GTK_WIDGET(cb));
+
+	GtkWidget *up = gtk_button_new_with_label("\xe2\x96\xb2 Up");
+	gtk_widget_set_sensitive(up, pos > 0);
+	g_object_set_data(G_OBJECT(up), "widget_pos", GINT_TO_POINTER(pos));
+	g_signal_connect(up, "clicked", G_CALLBACK(on_widget_move_up), w);
+	gtk_box_append(GTK_BOX(hdr), up);
+
+	GtkWidget *dn = gtk_button_new_with_label("\xe2\x96\xbc Down");
+	gtk_widget_set_sensitive(dn, pos < total - 1);
+	g_object_set_data(G_OBJECT(dn), "widget_pos", GINT_TO_POINTER(pos));
+	g_signal_connect(dn, "clicked", G_CALLBACK(on_widget_move_down), w);
+	gtk_box_append(GTK_BOX(hdr), dn);
+
+	/* Store button pointers on frame so refresh_widgets_list can update
+	 * their sensitivity without rebuilding the rows */
+	g_object_set_data(G_OBJECT(frame), "up_btn", up);
+	g_object_set_data(G_OBJECT(frame), "dn_btn", dn);
+
+	/* Settings revealer */
+	GtkRevealer *rev = GTK_REVEALER(gtk_revealer_new());
+	gtk_revealer_set_transition_type(rev,
+		GTK_REVEALER_TRANSITION_TYPE_SLIDE_DOWN);
+	gtk_revealer_set_transition_duration(rev, 200);
+	gtk_revealer_set_reveal_child(rev, show_val);
+	gtk_box_append(GTK_BOX(vbox), GTK_WIDGET(rev));
+
+	g_object_set_data(G_OBJECT(cb), "revealer", rev);
+	store_signal_pair(frame, G_OBJECT(cb),
+		g_signal_connect(cb, "toggled", G_CALLBACK(on_widget_show_toggled), w));
+
+	/* Settings grid */
+	GtkWidget *sg = gtk_grid_new();
+	gtk_grid_set_column_spacing(GTK_GRID(sg), 12);
+	gtk_grid_set_row_spacing(GTK_GRID(sg), 6);
+	gtk_widget_set_margin_start(sg, 16);
+	gtk_widget_set_margin_end(sg, 4);
+	gtk_widget_set_margin_top(sg, 4);
+	gtk_widget_set_margin_bottom(sg, 4);
+	gtk_revealer_set_child(rev, sg);
+	int r = 0;
+
+	switch (wid) {
+	case 0: { /* Net */
+		w->show_net_check = cb;
+
+		w->net_iface_entry = GTK_ENTRY(gtk_entry_new());
+		gtk_editable_set_text(GTK_EDITABLE(w->net_iface_entry),
+			w->cfg.net_iface ? w->cfg.net_iface : "");
+		gtk_entry_set_placeholder_text(w->net_iface_entry, "auto-detect");
+		gtk_widget_set_hexpand(GTK_WIDGET(w->net_iface_entry), TRUE);
+		grid_row(GTK_GRID(sg), r++,
+			"Interface:", GTK_WIDGET(w->net_iface_entry));
+		store_signal_pair(frame, G_OBJECT(w->net_iface_entry),
+			connect_mark_unsaved(GTK_WIDGET(w->net_iface_entry), w));
+
+		if (verbose >= 2)
+			fprintf(stderr, "[config-window]   net: making rx_color_btn\n");
+		w->net_rx_color_btn = make_color_btn(w->color_dialog,
+			w->cfg.net_rx_color ? w->cfg.net_rx_color : 0xFFFF3FFA);
+		grid_row(GTK_GRID(sg), r++,
+			"Down speed color:", GTK_WIDGET(w->net_rx_color_btn));
+		store_signal_pair(frame, G_OBJECT(w->net_rx_color_btn),
+			connect_mark_unsaved(GTK_WIDGET(w->net_rx_color_btn), w));
+
+		if (verbose >= 2)
+			fprintf(stderr, "[config-window]   net: making tx_color_btn\n");
+		w->net_tx_color_btn = make_color_btn(w->color_dialog,
+			w->cfg.net_tx_color ? w->cfg.net_tx_color : 0xFF3AFFFD);
+		grid_row(GTK_GRID(sg), r++,
+			"Up speed color:", GTK_WIDGET(w->net_tx_color_btn));
+		store_signal_pair(frame, G_OBJECT(w->net_tx_color_btn),
+			connect_mark_unsaved(GTK_WIDGET(w->net_tx_color_btn), w));
+
+		if (verbose >= 2)
+			fprintf(stderr, "[config-window]   net: making size_spin\n");
+		w->net_size_spin = make_spin(4, 128,
+			w->cfg.net_font_size > 0 ? w->cfg.net_font_size : 14);
+		grid_row(GTK_GRID(sg), r++,
+			"Font size (pt):", GTK_WIDGET(w->net_size_spin));
+		store_signal_pair(frame, G_OBJECT(w->net_size_spin),
+			connect_mark_unsaved(GTK_WIDGET(w->net_size_spin), w));
+
+		if (verbose >= 2)
+			fprintf(stderr, "[config-window]   net: making bg_color_btn\n");
+		w->net_bg_color_btn = make_color_btn(w->color_dialog,
+			w->cfg.net_bg_color ? w->cfg.net_bg_color : 0x94000000);
+		grid_row(GTK_GRID(sg), r++,
+			"Tile background:", GTK_WIDGET(w->net_bg_color_btn));
+		store_signal_pair(frame, G_OBJECT(w->net_bg_color_btn),
+			connect_mark_unsaved(GTK_WIDGET(w->net_bg_color_btn), w));
+		if (verbose >= 2)
+			fprintf(stderr, "[config-window]   net: done\n");
+		break;
+	}
+	case 1: /* Volume — no sub-settings */
+		w->show_volume_check = cb;
+		break;
+	case 3: /* Apps — no sub-settings; checkbox is non-interactive */
+		gtk_widget_set_sensitive(GTK_WIDGET(cb), FALSE);
+		break;
+	case 2: { /* Date */
+		w->show_date_check = cb;
+
+		w->date_date_format_entry = GTK_ENTRY(gtk_entry_new());
+		gtk_editable_set_text(GTK_EDITABLE(w->date_date_format_entry),
+			w->cfg.date_date_format ? w->cfg.date_date_format : "%a %d %B");
+		gtk_widget_set_hexpand(GTK_WIDGET(w->date_date_format_entry), TRUE);
+		grid_row(GTK_GRID(sg), r++,
+			"Date format (strftime):", GTK_WIDGET(w->date_date_format_entry));
+		store_signal_pair(frame, G_OBJECT(w->date_date_format_entry),
+			connect_mark_unsaved(GTK_WIDGET(w->date_date_format_entry), w));
+
+		w->date_date_color_btn = make_color_btn(w->color_dialog,
+			w->cfg.date_date_color ? w->cfg.date_date_color : 0xFF68FF3A);
+		grid_row(GTK_GRID(sg), r++,
+			"Date color:", GTK_WIDGET(w->date_date_color_btn));
+		store_signal_pair(frame, G_OBJECT(w->date_date_color_btn),
+			connect_mark_unsaved(GTK_WIDGET(w->date_date_color_btn), w));
+
+		w->date_date_size_spin = make_spin(4, 128,
+			w->cfg.date_date_size > 0 ? w->cfg.date_date_size : 16);
+		grid_row(GTK_GRID(sg), r++,
+			"Date font size (pt):", GTK_WIDGET(w->date_date_size_spin));
+		store_signal_pair(frame, G_OBJECT(w->date_date_size_spin),
+			connect_mark_unsaved(GTK_WIDGET(w->date_date_size_spin), w));
+
+		w->date_time_format_entry = GTK_ENTRY(gtk_entry_new());
+		gtk_editable_set_text(GTK_EDITABLE(w->date_time_format_entry),
+			w->cfg.date_time_format ? w->cfg.date_time_format : "%H:%M");
+		gtk_widget_set_hexpand(GTK_WIDGET(w->date_time_format_entry), TRUE);
+		grid_row(GTK_GRID(sg), r++,
+			"Time format (strftime):", GTK_WIDGET(w->date_time_format_entry));
+		store_signal_pair(frame, G_OBJECT(w->date_time_format_entry),
+			connect_mark_unsaved(GTK_WIDGET(w->date_time_format_entry), w));
+
+		w->date_time_color_btn = make_color_btn(w->color_dialog,
+			w->cfg.date_time_color ? w->cfg.date_time_color : 0xFFFF0000);
+		grid_row(GTK_GRID(sg), r++,
+			"Time color:", GTK_WIDGET(w->date_time_color_btn));
+		store_signal_pair(frame, G_OBJECT(w->date_time_color_btn),
+			connect_mark_unsaved(GTK_WIDGET(w->date_time_color_btn), w));
+
+		w->date_time_size_spin = make_spin(4, 128,
+			w->cfg.date_time_size > 0 ? w->cfg.date_time_size : 36);
+		grid_row(GTK_GRID(sg), r++,
+			"Time font size (pt):", GTK_WIDGET(w->date_time_size_spin));
+		store_signal_pair(frame, G_OBJECT(w->date_time_size_spin),
+			connect_mark_unsaved(GTK_WIDGET(w->date_time_size_spin), w));
+
+		w->date_bg_color_btn = make_color_btn(w->color_dialog,
+			w->cfg.date_bg_color ? w->cfg.date_bg_color : 0x94000000);
+		grid_row(GTK_GRID(sg), r++,
+			"Tile background:", GTK_WIDGET(w->date_bg_color_btn));
+		store_signal_pair(frame, G_OBJECT(w->date_bg_color_btn),
+			connect_mark_unsaved(GTK_WIDGET(w->date_bg_color_btn), w));
+		break;
+	}
+	}
+
+	return frame;
+}
+
+static void
+refresh_widgets_list(CfgWin *w)
+{
+	gboolean is_empty =
+		gtk_widget_get_first_child(GTK_WIDGET(w->widgets_box)) == NULL;
+
+	if (is_empty) {
+		/* Initial population — no existing rows to reorder, just build */
+		if (verbose >= 2)
+			fprintf(stderr,
+				"[config-window] refresh_widgets_list: initial build\n");
+		for (int i = 0; i < 4; i++)
+			gtk_box_append(w->widgets_box, make_widget_row(w, i));
+		if (verbose >= 2)
+			fprintf(stderr, "[config-window] refresh_widgets_list: done\n");
+		return;
+	}
+
+	if (verbose >= 2)
+		fprintf(stderr, "[config-window] refresh_widgets_list: reordering\n");
+
+	/* Collect the three row widgets into an array indexed by widget ID */
+	GtkWidget *rows[4] = {NULL, NULL, NULL, NULL};
+	GtkWidget *child = gtk_widget_get_first_child(GTK_WIDGET(w->widgets_box));
+	while (child) {
+		int wid =
+			GPOINTER_TO_INT(g_object_get_data(G_OBJECT(child), "widget_id")) -
+			1;
+		if (verbose >= 2)
+			fprintf(stderr, "[config-window]   found row %p wid=%d\n",
+				(void *)child, wid);
+		if (wid >= 0 && wid < 4)
+			rows[wid] = child;
+		child = gtk_widget_get_next_sibling(child);
+	}
+	if (verbose >= 2)
+		fprintf(stderr, "[config-window]   rows: [0]=%p [1]=%p [2]=%p [3]=%p\n",
+			(void *)rows[0], (void *)rows[1], (void *)rows[2], (void *)rows[3]);
+
+	/* Re-insert in widget_order sequence.
+	 * We work from last-desired to first-desired, always inserting at front,
+	 * to achieve the right final order. */
+	for (int i = 3; i >= 0; i--) {
+		int wid = w->cfg.widget_order[i];
+		GtkWidget *row = rows[wid];
+		if (verbose >= 2)
+			fprintf(stderr, "[config-window]   reorder i=%d wid=%d row=%p\n", i,
+				wid, (void *)row);
+		if (!row)
+			continue;
+
+		/* Re-ref the widget, remove it, then re-add at the front */
+		g_object_ref(row);
+		gtk_box_remove(w->widgets_box, row);
+		gtk_box_prepend(w->widgets_box, row);
+		g_object_unref(row);
+
+		if (verbose >= 2)
+			fprintf(stderr, "[config-window]   placed wid=%d at position %d\n",
+				wid, i);
+	}
+
+	/* Update the Up/Down button sensitivity and widget_pos to match new
+	 * positions */
+	child = gtk_widget_get_first_child(GTK_WIDGET(w->widgets_box));
+	int pos = 0;
+	while (child) {
+		GtkWidget *up = g_object_get_data(G_OBJECT(child), "up_btn");
+		GtkWidget *dn = g_object_get_data(G_OBJECT(child), "dn_btn");
+		if (up) {
+			gtk_widget_set_sensitive(up, pos > 0);
+			g_object_set_data(G_OBJECT(up), "widget_pos", GINT_TO_POINTER(pos));
+		}
+		if (dn) {
+			gtk_widget_set_sensitive(dn, pos < 3);
+			g_object_set_data(G_OBJECT(dn), "widget_pos", GINT_TO_POINTER(pos));
+		}
+		child = gtk_widget_get_next_sibling(child);
+		pos++;
+	}
+
+	if (verbose >= 2)
+		fprintf(stderr, "[config-window] refresh_widgets_list: done\n");
 }
 
 /* Both the Close button and the window's own × button route through here,
@@ -996,6 +1566,7 @@ on_remove_clicked(GtkButton *btn, gpointer data)
 	for (int i = idx; i < w->cfg.count - 1; i++)
 		w->cfg.apps[i] = w->cfg.apps[i + 1];
 	w->cfg.count--;
+	mark_unsaved(w);
 	refresh_apps_list(w);
 }
 
@@ -1011,6 +1582,7 @@ on_move_up_clicked(GtkButton *btn, gpointer data)
 	DesktopEntry *t = w->cfg.apps[idx - 1];
 	w->cfg.apps[idx - 1] = w->cfg.apps[idx];
 	w->cfg.apps[idx] = t;
+	mark_unsaved(w);
 	refresh_apps_list(w);
 }
 
@@ -1026,6 +1598,7 @@ on_move_down_clicked(GtkButton *btn, gpointer data)
 	DesktopEntry *t = w->cfg.apps[idx + 1];
 	w->cfg.apps[idx + 1] = w->cfg.apps[idx];
 	w->cfg.apps[idx] = t;
+	mark_unsaved(w);
 	refresh_apps_list(w);
 }
 
@@ -1323,40 +1896,48 @@ on_activate(GApplication *gapp, gpointer data)
 		make_spin(8, 512, w->cfg.icon_size > 0 ? w->cfg.icon_size : 64);
 	grid_row(GTK_GRID(gg), r++,
 		"Icon size (px):", GTK_WIDGET(w->icon_size_spin));
+	connect_mark_unsaved(GTK_WIDGET(w->icon_size_spin), w);
 
 	w->icon_spacing_spin = make_spin(0, 256, w->cfg.icon_spacing);
 	grid_row(GTK_GRID(gg), r++,
 		"Icon spacing (px):", GTK_WIDGET(w->icon_spacing_spin));
+	connect_mark_unsaved(GTK_WIDGET(w->icon_spacing_spin), w);
 
 	w->exclusive_zone_spin = make_spin(-1, 2048, w->cfg.exclusive_zone);
 	grid_row(GTK_GRID(gg), r++,
 		"Exclusive zone:", GTK_WIDGET(w->exclusive_zone_spin));
+	connect_mark_unsaved(GTK_WIDGET(w->exclusive_zone_spin), w);
 
 	{
 		static const char *const lm[] = {"always", "hover", "never", NULL};
 		w->label_mode_drop = make_dropdown(lm, (int)w->cfg.label_mode);
 		grid_row(GTK_GRID(gg), r++,
 			"Label mode:", GTK_WIDGET(w->label_mode_drop));
+		connect_mark_unsaved(GTK_WIDGET(w->label_mode_drop), w);
 	}
 
 	w->label_color_btn = make_color_btn(w->color_dialog,
 		w->cfg.label_color ? w->cfg.label_color : 0xFFFFFFFF);
 	grid_row(GTK_GRID(gg), r++, "Label color:", GTK_WIDGET(w->label_color_btn));
+	connect_mark_unsaved(GTK_WIDGET(w->label_color_btn), w);
 
 	w->label_size_spin =
 		make_spin(4, 128, w->cfg.label_size > 0 ? w->cfg.label_size : 10);
 	grid_row(GTK_GRID(gg), r++,
 		"Label font size (pt):", GTK_WIDGET(w->label_size_spin));
+	connect_mark_unsaved(GTK_WIDGET(w->label_size_spin), w);
 
 	w->label_offset_spin = make_spin(0, 512, w->cfg.label_offset);
 	grid_row(GTK_GRID(gg), r++,
 		"Label offset (px from bottom):", GTK_WIDGET(w->label_offset_spin));
+	connect_mark_unsaved(GTK_WIDGET(w->label_offset_spin), w);
 
 	{
 		static const char *const pos[] = {
 			"bottom", "top", "left", "right", NULL};
 		w->position_drop = make_dropdown(pos, (int)w->cfg.position);
 		grid_row(GTK_GRID(gg), r++, "Position:", GTK_WIDGET(w->position_drop));
+		connect_mark_unsaved(GTK_WIDGET(w->position_drop), w);
 	}
 
 	{
@@ -1364,88 +1945,23 @@ on_activate(GApplication *gapp, gpointer data)
 			"background", "bottom", "top", "overlay", NULL};
 		w->layer_drop = make_dropdown(lay, (int)w->cfg.layer);
 		grid_row(GTK_GRID(gg), r++, "Layer:", GTK_WIDGET(w->layer_drop));
+		connect_mark_unsaved(GTK_WIDGET(w->layer_drop), w);
 	}
 
 	/* ---- Widgets ---- */
-	gtk_box_append(GTK_BOX(content), section_label("<b>Widgets</b>"));
+	gtk_box_append(GTK_BOX(content),
+		section_label(
+			"<b>Widgets</b>  <small>(use ▲▼ to change bar order)</small>"));
 
-	w->show_volume_check =
-		GTK_CHECK_BUTTON(gtk_check_button_new_with_label("Show volume widget"));
-	gtk_check_button_set_active(w->show_volume_check, w->cfg.show_volume);
-	gtk_widget_set_margin_bottom(GTK_WIDGET(w->show_volume_check), 4);
-	gtk_box_append(GTK_BOX(content), GTK_WIDGET(w->show_volume_check));
-
-	w->show_date_check = GTK_CHECK_BUTTON(
-		gtk_check_button_new_with_label("Show date/time widget"));
-	gtk_check_button_set_active(w->show_date_check, w->cfg.show_date);
-	gtk_box_append(GTK_BOX(content), GTK_WIDGET(w->show_date_check));
-
-	w->date_revealer = GTK_REVEALER(gtk_revealer_new());
-	gtk_revealer_set_transition_type(w->date_revealer,
-		GTK_REVEALER_TRANSITION_TYPE_SLIDE_DOWN);
-	gtk_revealer_set_transition_duration(w->date_revealer, 200);
-	gtk_revealer_set_reveal_child(w->date_revealer, w->cfg.show_date);
-	gtk_box_append(GTK_BOX(content), GTK_WIDGET(w->date_revealer));
-	g_signal_connect(w->show_date_check, "toggled",
-		G_CALLBACK(on_show_date_toggled), w);
-
-	GtkWidget *df = gtk_frame_new(NULL);
-	gtk_widget_set_margin_start(df, 20);
-	gtk_widget_set_margin_top(df, 4);
-	gtk_widget_set_margin_bottom(df, 4);
-	gtk_revealer_set_child(w->date_revealer, df);
-
-	GtkWidget *dg = gtk_grid_new();
-	gtk_grid_set_column_spacing(GTK_GRID(dg), 12);
-	gtk_grid_set_row_spacing(GTK_GRID(dg), 6);
-	gtk_widget_set_margin_start(dg, 8);
-	gtk_widget_set_margin_end(dg, 8);
-	gtk_widget_set_margin_top(dg, 6);
-	gtk_widget_set_margin_bottom(dg, 6);
-	gtk_frame_set_child(GTK_FRAME(df), dg);
-	int dr = 0;
-
-	w->date_date_format_entry = GTK_ENTRY(gtk_entry_new());
-	gtk_editable_set_text(GTK_EDITABLE(w->date_date_format_entry),
-		w->cfg.date_date_format ? w->cfg.date_date_format : "%a %d %B");
-	gtk_widget_set_hexpand(GTK_WIDGET(w->date_date_format_entry), TRUE);
-	grid_row(GTK_GRID(dg), dr++,
-		"Date format (strftime):", GTK_WIDGET(w->date_date_format_entry));
-
-	/* Default colours match write_default_config: #68FF3A, #FF0000, #00000094
-	 */
-	w->date_date_color_btn = make_color_btn(w->color_dialog,
-		w->cfg.date_date_color ? w->cfg.date_date_color : 0xFF68FF3A);
-	grid_row(GTK_GRID(dg), dr++,
-		"Date color:", GTK_WIDGET(w->date_date_color_btn));
-
-	w->date_date_size_spin = make_spin(4, 128,
-		w->cfg.date_date_size > 0 ? w->cfg.date_date_size : 16);
-	grid_row(GTK_GRID(dg), dr++,
-		"Date font size (pt):", GTK_WIDGET(w->date_date_size_spin));
-
-	w->date_time_format_entry = GTK_ENTRY(gtk_entry_new());
-	gtk_editable_set_text(GTK_EDITABLE(w->date_time_format_entry),
-		w->cfg.date_time_format ? w->cfg.date_time_format : "%H:%M");
-	gtk_widget_set_hexpand(GTK_WIDGET(w->date_time_format_entry), TRUE);
-	grid_row(GTK_GRID(dg), dr++,
-		"Time format (strftime):", GTK_WIDGET(w->date_time_format_entry));
-
-	w->date_time_color_btn = make_color_btn(w->color_dialog,
-		w->cfg.date_time_color ? w->cfg.date_time_color : 0xFFFF0000);
-	grid_row(GTK_GRID(dg), dr++,
-		"Time color:", GTK_WIDGET(w->date_time_color_btn));
-
-	w->date_time_size_spin = make_spin(4, 128,
-		w->cfg.date_time_size > 0 ? w->cfg.date_time_size : 36);
-	grid_row(GTK_GRID(dg), dr++,
-		"Time font size (pt):", GTK_WIDGET(w->date_time_size_spin));
-
-	/* Default bg: 0x94000000 = black, ~58% transparent */
-	w->date_bg_color_btn = make_color_btn(w->color_dialog,
-		w->cfg.date_bg_color ? w->cfg.date_bg_color : 0x94000000);
-	grid_row(GTK_GRID(dg), dr++,
-		"Tile background:", GTK_WIDGET(w->date_bg_color_btn));
+	/* We build the three widget rows in the order stored in cfg.widget_order.
+	 * Each row has a header with ▲/▼ buttons that swap adjacent entries in
+	 * widget_order and refresh the whole section.
+	 *
+	 * The three rows are kept in a single GtkBox (w->widgets_box) so they
+	 * can be fully rebuilt by refresh_widgets_list(). */
+	w->widgets_box = GTK_BOX(gtk_box_new(GTK_ORIENTATION_VERTICAL, 0));
+	gtk_box_append(GTK_BOX(content), GTK_WIDGET(w->widgets_box));
+	refresh_widgets_list(w);
 
 	/* ---- Applications ---- */
 	gtk_box_append(GTK_BOX(content),

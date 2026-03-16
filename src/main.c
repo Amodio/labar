@@ -98,58 +98,118 @@ double current_pointer_y = 0.0;
 int last_hovered_icon = -1;
 
 // ---------------------------------------------------------------------------
+// Widget ID constants — must match widget_order[] values in config.h
+// ---------------------------------------------------------------------------
+#define WIDGET_ID_NET 0
+#define WIDGET_ID_VOLUME 1
+#define WIDGET_ID_DATE 2
+#define WIDGET_ID_APPS 3 // sentinel: marks the app-icons block position
+
+static int
+widget_enabled(int id)
+{
+	switch (id) {
+	case WIDGET_ID_NET:
+		return app_config.show_net;
+	case WIDGET_ID_VOLUME:
+		return app_config.show_volume;
+	case WIDGET_ID_DATE:
+		return app_config.show_date;
+	case WIDGET_ID_APPS:
+		return app_config.count > 0;
+	default:
+		return 0;
+	}
+}
+
+// ---------------------------------------------------------------------------
 // get_total_widget_count
-//
-// Returns the total number of icon slots: net + apps + volume + date.
 // ---------------------------------------------------------------------------
 static int
 get_total_widget_count(void)
 {
-	return (app_config.show_net ? 1 : 0) + app_config.count +
-		(app_config.show_volume ? 1 : 0) + (app_config.show_date ? 1 : 0);
+	int n = app_config.count;
+	for (int i = 0; i < 4; i++)
+		if (app_config.widget_order[i] != WIDGET_ID_APPS &&
+			widget_enabled(app_config.widget_order[i]))
+			n++;
+	return n;
 }
 
 // ---------------------------------------------------------------------------
-// get_net_slot_index
+// slot_index_for_widget
 //
-// Returns the slot index of the network widget, or -1 if disabled.
-// Net is always the first slot.
+// Walks widget_order[4].  The WIDGET_ID_APPS entry marks where the app block
+// sits.  Widgets before it are pre-app; widgets after it are post-app.
 // ---------------------------------------------------------------------------
+static int
+slot_index_for_widget(int id)
+{
+	if (!widget_enabled(id))
+		return -1;
+
+	int pre = 0;  // enabled widgets before the apps block
+	int post = 0; // enabled widgets between apps block and id
+	int past_apps = 0;
+
+	for (int i = 0; i < 4; i++) {
+		int wid = app_config.widget_order[i];
+		if (wid == WIDGET_ID_APPS) {
+			past_apps = 1;
+			continue;
+		}
+		if (wid == id) {
+			if (!past_apps)
+				return pre; // pre-app slot
+			else
+				return pre + app_config.count + post; // post-app slot
+		}
+		if (!widget_enabled(wid))
+			continue;
+		if (!past_apps)
+			pre++;
+		else
+			post++;
+	}
+	return -1; // not found
+}
+
 int
 get_net_slot_index(void)
 {
-	if (!app_config.show_net)
-		return -1;
-	return 0;
+	return slot_index_for_widget(WIDGET_ID_NET);
 }
 
-// ---------------------------------------------------------------------------
-// get_volume_slot_index
-//
-// Returns the slot index of the volume widget, or -1 if disabled.
-// Volume sits immediately after the app icons.
-// ---------------------------------------------------------------------------
 int
 get_volume_slot_index(void)
 {
-	if (!app_config.show_volume)
-		return -1;
-	return (app_config.show_net ? 1 : 0) + app_config.count;
+	return slot_index_for_widget(WIDGET_ID_VOLUME);
 }
 
-// ---------------------------------------------------------------------------
-// get_date_slot_index
-//
-// Returns the slot index of the date widget, or -1 if disabled.
-// Date is always the last slot.
-// ---------------------------------------------------------------------------
 int
 get_date_slot_index(void)
 {
-	if (!app_config.show_date)
-		return -1;
-	return (app_config.show_net ? 1 : 0) + app_config.count +
-		(app_config.show_volume ? 1 : 0);
+	return slot_index_for_widget(WIDGET_ID_DATE);
+}
+
+// ---------------------------------------------------------------------------
+// get_app_first_slot
+//
+// Returns the slot index of the first app icon: the count of enabled widgets
+// that appear before the WIDGET_ID_APPS entry in widget_order.
+// ---------------------------------------------------------------------------
+int
+get_app_first_slot(void)
+{
+	int pre = 0;
+	for (int i = 0; i < 4; i++) {
+		int wid = app_config.widget_order[i];
+		if (wid == WIDGET_ID_APPS)
+			break;
+		if (widget_enabled(wid))
+			pre++;
+	}
+	return pre;
 }
 
 // ---------------------------------------------------------------------------
@@ -647,7 +707,7 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 
 		if (is_vertical) {
 			// Draw each application icon vertically (top to bottom)
-			int app_first_slot = (app_config.show_net ? 1 : 0);
+			int app_first_slot = get_app_first_slot();
 			for (int i = 0; i < app_config.count; i++) {
 				int y_offset =
 					get_offset_for_icon(app_first_slot + i) * buffer_scale;
@@ -754,7 +814,7 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 			}
 		} else {
 			// Draw each application icon horizontally (left to right)
-			int app_first_slot = (app_config.show_net ? 1 : 0);
+			int app_first_slot = get_app_first_slot();
 			for (int i = 0; i < app_config.count; i++) {
 				int x_offset =
 					get_offset_for_icon(app_first_slot + i) * buffer_scale;

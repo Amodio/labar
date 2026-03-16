@@ -2,17 +2,19 @@ labar(1)
 
 # NAME
 
-labar - A Wayland layer-shell application bar with icons and a date/time widget
+labar - A Wayland layer-shell application bar with icons, a volume widget,
+		a network speed widget, and a date/time widget.
 
 # SYNOPSIS
 
-*labar* [options]
+*labar* [*-v*...] [*-c*] [*-V*]
 
 # DESCRIPTION
 
 *labar* is a minimal Wayland layer-shell bar that displays application icons
-and an optional date/time widget. It renders on any edge of the screen
-(top, bottom, left, or right) using the *zwlr-layer-shell-v1* protocol.
+and optional widgets (volume, network speed, date/time). It renders on any
+edge of the screen (top, bottom, left, or right) using the
+*zwlr-layer-shell-v1* protocol.
 Icons are rendered from SVG or PNG files; the bar reacts to mouse clicks,
 right-clicks, and scroll events. HiDPI displays are supported via
 *wl_output.scale* (integer) and *wp_fractional_scale_v1* (fractional).
@@ -31,7 +33,8 @@ exist, *labar* generates a default one on first run.
 	*-v*
 		Level 1 — general lifecycle messages: configuration loaded,
 		bar dimensions, output scale detected, HiDPI scale events,
-		volume changes, and minute/second boundary repaints.
+		volume changes, network interface selected, and
+		minute/second boundary repaints.
 
 	*-vv*
 		Level 2 — Wayland protocol details: globals bound
@@ -43,20 +46,30 @@ exist, *labar* generates a default one on first run.
 	*-vvv*
 		Level 3 — file I/O: every SVG and PNG open attempt (success
 		and failure), icon cache store/lookup/miss/clear operations
-		with path and size.
+		with path and size, icon search per application name.
 
 	*-vvvv*
 		Level 4 — high-frequency events: raw pointer motion
-		coordinates on every mouse move. Use only for input
-		debugging; output is very noisy.
+		coordinates on every mouse move, net tile render details,
+		per-second speed samples. Use only for input debugging;
+		output is very noisy.
+
+*-c, --config*
+	Open the graphical configuration editor (requires GTK4). The editor
+	lets you inspect and modify all settings interactively and save them
+	back to *~/.config/labar.cfg* without editing the file by hand.
+	Widgets can be reordered using the *▲ Up* / *▼ Down* buttons.
+	Available only when *labar* is built with *-DHAVE_GTK4=1*.
 
 *-V, --version*
 	Print the version string and exit.
 
 # CONFIGURATION
 
-*~/.config/labar.cfg* uses an INI-style format with a *[global]* section
-and one or more *[apps]* sections.
+*~/.config/labar.cfg* uses an INI-style format with a *[global]* section,
+optional *[widget-net]* and *[widget-date]* sections, and an *[apps]* section.
+The bar renders slots in the order: net widget → app icons → volume widget →
+date/time widget.
 
 ## [global] keys
 
@@ -73,7 +86,7 @@ and one or more *[apps]* sections.
 *icon-spacing=*_N_
 	Gap in pixels between icon slots. Default: *0*.
 
-*label-mode=*always|hover|never
+*label-mode=*_always_|_hover_|_never_
 	When to show the text label overlay on icons.
 	*always* draws labels permanently; *hover* shows them only while
 	the pointer is over the slot; *never* disables them entirely.
@@ -90,46 +103,82 @@ and one or more *[apps]* sections.
 *label-size=*_N_
 	Label font size in points. Default: *10*.
 
-*position=*top|bottom|left|right
+*position=*_top_|_bottom_|_left_|_right_
 	Which screen edge to attach the bar to. Default: *bottom*.
 
-*layer=*background|bottom|top|overlay
-	Wayland layer-shell layer. Default: *top* (below normal windows).
+*layer=*_background_|_bottom_|_top_|_overlay_
+	Wayland layer-shell layer. Default: *top* (above normal windows).
 
-*show-volume=*true|false
-	Append a volume icon slot at the end of the bar. The slot shows the
+*show-volume=*_true_|_false_
+	Append a volume icon slot after the app icons. The slot shows the
 	current ALSA PCM level; left-click toggles mute, right-click opens
 	*alsamixer* in a terminal, and scroll adjusts the volume.
 	Default: *true*.
 
-*show-date=*true|false
-	Append a date/time text slot at the end of the bar (after the volume
-	slot if enabled). The slot renders two lines of text using Cairo;
-	no icon file is required. Default: *true*.
+*show-date=*_true_|_false_
+	Append a date/time text slot at the end of the bar. The slot
+	renders two lines of text using Cairo; no icon file is required.
+	Settings live in the *[widget-date]* section. Default: *true*.
 
-*widget-date-format=*_FORMAT_
+*show-net=*_true_|_false_
+	Append a network speed text slot at the beginning of the bar (before
+	app icons). The slot renders two lines showing the current receive
+	and transmit speeds read from */proc/net/dev*. Settings live in the
+	*[widget-net]* section. Default: *true*.
+
+*widget-order=*_WIDGET_,_WIDGET_,_WIDGET_,_WIDGET_
+	Bar order of the three widgets and the app-icon block as a
+	comma-separated list of four names: *net*, *volume*, *date*, *apps*.
+	Entries listed before *apps* appear to the left of the app icons;
+	entries listed after *apps* appear to the right.
+	Default: *net,apps,volume,date*.
+
+## [widget-net] keys
+
+*iface=*_NAME_
+	Network interface to monitor (e.g. *eth0*, *wlan0*). If omitted,
+	*labar* auto-detects the first non-loopback interface with traffic.
+
+*rx-color=*_#RRGGBB_|_#RRGGBBAA_
+	Color of the receive (download) speed line.
+	Default: *#FF3FFA* (magenta).
+
+*tx-color=*_#RRGGBB_|_#RRGGBBAA_
+	Color of the transmit (upload) speed line.
+	Default: *#3AFFFD* (cyan).
+
+*size=*_N_
+	Font size in points for both speed lines. Default: *14*.
+
+*bg-color=*_#RRGGBBAA_
+	Background fill color for the tile. Default: *#00000094* (black,
+	42% transparent).
+
+## [widget-date] keys
+
+*format=*_FORMAT_
 	*strftime*(3) format string for the upper line of the date slot.
 	Default: *%a %d %B* (abbreviated weekday and day-of-month).
 
-*widget-date-color=*_#RRGGBB_|_#RRGGBBAA_
+*color=*_#RRGGBB_|_#RRGGBBAA_
 	Color of the upper date line. Default: *#68FF3A*.
 
-*widget-date-size=*_N_
+*size=*_N_
 	Font size in points for the upper date line. Default: *16*.
 
-*widget-date-time-format=*_FORMAT_
+*time-format=*_FORMAT_
 	*strftime*(3) format string for the lower line of the date slot.
 	If the format includes *%S*, *%T*, *%X*, *%c*, or *%r*, the slot
 	refreshes every second; otherwise it refreshes at each minute
 	boundary. Default: *%H:%M*.
 
-*widget-date-time-color=*_#RRGGBB_|_#RRGGBBAA_
+*time-color=*_#RRGGBB_|_#RRGGBBAA_
 	Color of the lower time line. Default: *#FF0000*.
 
-*widget-date-time-size=*_N_
+*time-size=*_N_
 	Font size in points for the lower time line. Default: *36*.
 
-*widget-date-bg-color=*_#RRGGBBAA_
+*bg-color=*_#RRGGBBAA_
 	Background fill color for the date/time tile. Supports alpha;
 	*#00000000* is fully transparent. Default: *#00000094* (black,
 	42% transparent).
@@ -149,7 +198,7 @@ Each application is defined by a consecutive block of keys inside an
 	Command executed on left-click. Parsed by *execvp*(3); *%u* and
 	similar desktop-file placeholders are passed through verbatim.
 
-*terminal=*true|false
+*terminal=*_true_|_false_
 	If *true*, the command is launched inside the terminal emulator
 	defined by the *DEFAULT_TERMINAL* compile-time constant (default:
 	*foot*). Default: *false*.
@@ -157,77 +206,29 @@ Each application is defined by a consecutive block of keys inside an
 ## Default configuration
 
 ```
-# labar default configuration
-# Edit this file to add or remove applications from the bar
-
 [global]
-# exclusive-zone: interaction with other surfaces
-#    0: surface will be moved to avoid occluding
-#       surfaces with positive exclusive zone
-#   >0: surface reserves space (e.g., panel=10 prevents
-#       maximized windows from overlapping)
-#   -1: surface stretches to edges, ignoring other
-#       surfaces (e.g., wallpaper, lock screen)
 exclusive-zone=64
 icon-size=64
-# icon-spacing: spacing between icons in pixels
 icon-spacing=0
-# label-mode: always | hover | never
 label-mode=hover
-# label-color: hex color #RRGGBB or #RRGGBBAA
 label-color=#FFFFFF
-# label_offset: pixels from the bottom edge of the icon to the text baseline
-#   0 = bottom edge (descenders clipped), icon-size = top edge (text invisible)
-#   recommended range: 4-16
 label-offset=10
-# label-size: font size in points for the app-name label
 label-size=10
-# position: where to place the bar on screen
-#   bottom (default): horizontal bar at the bottom
-#   top:              horizontal bar at the top
-#   left:             vertical bar on the left
-#   right:            vertical bar on the right
 position=bottom
-# layer: layer-shell layer for the surface
-#   background:       beneath everything (for wallpapers)
-#   bottom:           below normal windows (for docks)
-#   top (default):    above normal windows
-#   overlay:          on top of everything
 layer=top
-# show-volume: append a volume icon at the end of the bar
-#   true:  show the volume widget (default)
-#   false: no volume widget
 show-volume=true
-# show-date: append a date/time text slot at the end of the bar
-#   true:  show the date/time widget
-#   false: no date/time widget (default)
 show-date=true
-# date/time widget — line 1 (date) style
-#   widget-date-format: strftime(3) format, e.g. "%a %d %B"
-widget-date-format=%a %d %B
-widget-date-color=#68FF3A
-widget-date-size=16
-# date/time widget — line 2 (time) style
-#   widget-date-time-format: strftime(3) format, e.g. "%H:%M"
-widget-date-time-format=%H:%M
-widget-date-time-color=#FF0000
-widget-date-time-size=36
-# widget-date-bg-color: background color for the date/time tile
-#   format: #RRGGBBAA (alpha in last byte)
-#   e.g. #00000094 = black 42% transparent (default)
-#        #00000000 = fully transparent
-#        #000000FF = fully opaque black
-widget-date-bg-color=#00000094
+show-net=true
+widget-order=net,apps,volume,date
+
+[widget-net]
+# iface=eth0
+rx-color=#FF3FFA
+tx-color=#3AFFFD
+size=14
+bg-color=#00000094
 
 [apps]
-name=KeePassXC
-icon=/usr/share/icons/hicolor/scalable/apps/keepassxc.svg
-exec=keepassxc %f
-
-name=Thunderbird
-icon=/usr/share/icons/hicolor/256x256/apps/thunderbird.png
-exec=thunderbird %u
-
 name=Firefox
 icon=/usr/share/icons/hicolor/scalable/apps/firefox.svg
 exec=/usr/lib/firefox/firefox %u
@@ -235,6 +236,15 @@ exec=/usr/lib/firefox/firefox %u
 name=Foot
 icon=/usr/share/icons/hicolor/scalable/apps/foot.svg
 exec=foot
+
+[widget-date]
+format=%a %d %B
+color=#68FF3A
+size=16
+time-format=%H:%M
+time-color=#FF0000
+time-size=36
+bg-color=#00000094
 ```
 
 # ICON DISCOVERY
@@ -276,6 +286,9 @@ moves to a different monitor via *wl_surface.enter*.
 	Left-click toggles ALSA PCM mute.
 	Right-click opens *alsamixer* in a terminal.
 	Scroll up/down adjusts PCM volume by 4%.
+
+*Network speed slot* (when *show-net=true*)
+	Display-only; no mouse bindings.
 
 *Date/time slot* (when *show-date=true*)
 	Display-only; no mouse bindings.

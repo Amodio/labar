@@ -19,7 +19,8 @@ extern int phys_width;	 // Physical buffer width  (surf_width  * buffer_scale)
 extern int phys_height;	 // Physical buffer height (surf_height * buffer_scale)
 
 // Convenience: index of first app slot and helper to map slot → app index
-#define APP_FIRST_SLOT() ((app_config.show_net ? 1 : 0))
+/* get_app_first_slot() is defined in main.c and exported via seat.h */
+#define APP_FIRST_SLOT() (get_app_first_slot())
 #define SLOT_TO_APP(slot) ((slot) - APP_FIRST_SLOT())
 
 // ---------------------------------------------------------------------------
@@ -127,7 +128,8 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 				wl_surface_damage(surface, 0, 0, surf_width, surf_height);
 				wl_surface_commit(surface);
 				goto done_leave;
-			} else if (idx < app_config.count &&
+			} else if (SLOT_TO_APP(idx) >= 0 &&
+				SLOT_TO_APP(idx) < app_config.count &&
 				app_config.apps[SLOT_TO_APP(idx)]->icon) {
 				// Redraw app icon without label
 				draw_icon(app_config.apps[SLOT_TO_APP(idx)]->icon, tile,

@@ -179,19 +179,20 @@ find_default_iface(char *out, int out_len)
  * format_speed
  *
  * Format bytes-per-second into a human-readable string.
- * Output examples:  "↓ 1.2 MB/s"   "↑  456 KB/s"   "↓   0 B/s"
+ * Always uses KB/MB/GB — never raw bytes.
+ * Fixed-width output so both lines stay aligned:
+ *   "↓ 1234.5 MB/s"   "↑    0.1 KB/s"
  */
 static void
 format_speed(char *buf, int buf_len, double bps, const char *arrow)
 {
-	if (bps >= 1e9)
-		snprintf(buf, buf_len, "%s %.1f GB/s", arrow, bps / 1e9);
-	else if (bps >= 1e6)
-		snprintf(buf, buf_len, "%s %.1f MB/s", arrow, bps / 1e6);
-	else if (bps >= 1e3)
-		snprintf(buf, buf_len, "%s %.0f KB/s", arrow, bps / 1e3);
+	double kbps = bps / 1e3;
+	if (kbps >= 1e6)
+		snprintf(buf, buf_len, "%s %7.1f GB/s", arrow, kbps / 1e6);
+	else if (kbps >= 1e3)
+		snprintf(buf, buf_len, "%s %7.1f MB/s", arrow, kbps / 1e3);
 	else
-		snprintf(buf, buf_len, "%s %.0f B/s", arrow, bps);
+		snprintf(buf, buf_len, "%s %7.1f KB/s", arrow, kbps);
 }
 
 /*
