@@ -1,5 +1,5 @@
 project('labar', 'c',
-  version: '0.8.0',
+  version: '0.9.0',
   default_options: ['c_std=c11', 'prefix=/usr']
 )
 
