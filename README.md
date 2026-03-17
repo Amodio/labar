@@ -1,6 +1,6 @@
 # labar
 
-Lightweight Wayland bar — app launcher, network speed, CPU/RAM usage, volume,
+Wayland bar — app launcher, network speed, CPU/RAM usage, volume,
 and date/time widgets
 ([unrelated](https://www.youtube.com/watch?v=le-wL4Sm5Xg),
 [ditto](https://www.youtube.com/watch?v=C-fXYJj316Q)).
