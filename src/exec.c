@@ -265,3 +265,91 @@ launch_app(DesktopEntry *app)
 		free(argv[i]);
 	free(argv);
 }
+
+// ---------------------------------------------------------------------------
+// launch_command
+//
+// Launch a plain whitespace-separated command string (e.g. "foot -e btop").
+// Uses a self-contained double-fork so labar doesn't collect zombie processes.
+// stderr/stdout are intentionally kept open so the child can report errors.
+// ---------------------------------------------------------------------------
+void
+launch_command(const char *cmd)
+{
+	if (!cmd || !cmd[0])
+		return;
+
+	if (verbose)
+		printf("[DBG] -> launch_command: %s\n", cmd);
+
+	int argc;
+	char **argv = parse_exec(cmd, &argc);
+	if (!argv || argc == 0)
+		return;
+
+	/* First fork: intermediate process */
+	pid_t pid = fork();
+	if (pid < 0) {
+		fprintf(stderr, "ERROR: launch_command fork: %s\n", strerror(errno));
+		goto cleanup;
+	}
+	if (pid == 0) {
+		/* First child: detach from process group */
+		setsid();
+
+		/* Second fork: actual process (orphaned, adopted by init) */
+		pid_t pid2 = fork();
+		if (pid2 < 0) {
+			_exit(EXIT_FAILURE);
+		}
+		if (pid2 == 0) {
+			/* Second child: clean up inherited fds, reset signals,
+			 * then exec the command. */
+
+			/* Close all open file descriptors except stdin/stdout/stderr.
+			 * This prevents foot from inheriting Wayland socket fds or
+			 * other resources that could cause SIGHUP on close. */
+			int maxfd = (int)sysconf(_SC_OPEN_MAX);
+			if (maxfd < 0)
+				maxfd = 1024;
+			for (int fd = STDERR_FILENO + 1; fd < maxfd; fd++)
+				close(fd);
+
+			/* Redirect stdin/stdout/stderr to /dev/null */
+			int devnull = open("/dev/null", O_RDWR);
+			if (devnull >= 0) {
+				dup2(devnull, STDIN_FILENO);
+				dup2(devnull, STDOUT_FILENO);
+				dup2(devnull, STDERR_FILENO);
+				if (devnull > STDERR_FILENO)
+					close(devnull);
+			}
+
+			/* Reset all signal handlers to defaults */
+			struct sigaction sa = {.sa_handler = SIG_DFL};
+			sigemptyset(&sa.sa_mask);
+			for (int sig = 1; sig < NSIG; sig++)
+				sigaction(sig, &sa, NULL);
+
+			/* NULL-terminate argv for execvp */
+			char **execargv = malloc(sizeof(char *) * (argc + 1));
+			if (!execargv)
+				_exit(EXIT_FAILURE);
+			for (int i = 0; i < argc; i++)
+				execargv[i] = argv[i];
+			execargv[argc] = NULL;
+			execvp(execargv[0], execargv);
+			_exit(EXIT_FAILURE);
+		}
+		/* First child exits immediately so parent can waitpid cleanly */
+		_exit(EXIT_SUCCESS);
+	}
+
+	/* Parent: reap first child immediately */
+	waitpid(pid, NULL, 0);
+
+cleanup:
+	for (int i = 0; i < argc; i++)
+		free(argv[i]);
+	free(argv);
+}

@@ -330,6 +330,7 @@ struct _CfgWin {
 	GtkColorDialogButton *sysinfo_ram_color_btn;
 	GtkSpinButton *sysinfo_size_spin;
 	GtkColorDialogButton *sysinfo_bg_color_btn;
+	GtkEntry *sysinfo_exec_entry;
 
 	/* Apps */
 	GtkBox *apps_box;
@@ -596,6 +597,12 @@ write_config(CfgWin *w)
 			(int)gtk_spin_button_get_value(w->sysinfo_size_spin);
 	if (w->sysinfo_bg_color_btn)
 		c->sysinfo_bg_color = read_color_btn(w->sysinfo_bg_color_btn);
+	if (w->sysinfo_exec_entry) {
+		free(c->sysinfo_exec);
+		const char *v =
+			gtk_editable_get_text(GTK_EDITABLE(w->sysinfo_exec_entry));
+		c->sysinfo_exec = (v && v[0]) ? strdup(v) : NULL;
+	}
 
 	char *ddf =
 		strdup(gtk_editable_get_text(GTK_EDITABLE(w->date_date_format_entry)));
@@ -788,6 +795,11 @@ write_config(CfgWin *w)
 			fprintf(fp, "#   #00000000 = fully transparent\n");                \
 			fprint_color(fp, "bg-color",                                       \
 				c->sysinfo_bg_color ? c->sysinfo_bg_color : 0x94000000);       \
+			fprintf(fp,                                                        \
+				"# exec: command to run on left-click"                         \
+				" (empty to disable)\n");                                      \
+			fprintf(fp, "exec=%s\n",                                           \
+				c->sysinfo_exec ? c->sysinfo_exec : "foot -e btop");           \
 		}                                                                      \
 	} while (0)
 
@@ -1197,6 +1209,12 @@ harvest_widget_fields(CfgWin *w)
 			(int)gtk_spin_button_get_value(w->sysinfo_size_spin);
 	if (w->sysinfo_bg_color_btn)
 		w->cfg.sysinfo_bg_color = read_color_btn(w->sysinfo_bg_color_btn);
+	if (w->sysinfo_exec_entry) {
+		free(w->cfg.sysinfo_exec);
+		const char *v =
+			gtk_editable_get_text(GTK_EDITABLE(w->sysinfo_exec_entry));
+		w->cfg.sysinfo_exec = (v && v[0]) ? strdup(v) : NULL;
+	}
 }
 
 static void
@@ -1422,6 +1440,16 @@ make_widget_row(CfgWin *w, int pos)
 			"Tile background:", GTK_WIDGET(w->sysinfo_bg_color_btn));
 		store_signal_pair(frame, G_OBJECT(w->sysinfo_bg_color_btn),
 			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_bg_color_btn), w));
+
+		w->sysinfo_exec_entry = GTK_ENTRY(gtk_entry_new());
+		gtk_editable_set_text(GTK_EDITABLE(w->sysinfo_exec_entry),
+			w->cfg.sysinfo_exec ? w->cfg.sysinfo_exec : "");
+		gtk_entry_set_placeholder_text(w->sysinfo_exec_entry, "foot -e btop");
+		gtk_widget_set_hexpand(GTK_WIDGET(w->sysinfo_exec_entry), TRUE);
+		grid_row(GTK_GRID(sg), r++,
+			"Left-click command:", GTK_WIDGET(w->sysinfo_exec_entry));
+		store_signal_pair(frame, G_OBJECT(w->sysinfo_exec_entry),
+			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_exec_entry), w));
 		break;
 	}
 	case 2: { /* Date */

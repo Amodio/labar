@@ -156,6 +156,11 @@ volume widget → date/time widget.
 	Background fill color for the tile. Default: *#00000094* (black,
 	42% transparent).
 
+*exec=*_COMMAND_
+	Command to run when the tile is left-clicked. Parsed and launched
+	with *execvp*(3); leave empty to disable click handling.
+	Default: *foot -e btop*.
+
 ## [widget-net] keys
 
 *iface=*_NAME_
@@ -258,6 +263,7 @@ cpu-color=#FFEB3B
 ram-color=#66BB6A
 size=14
 bg-color=#00000094
+exec=foot -e btop
 
 [widget-net]
 # iface=eth0
@@ -326,7 +332,9 @@ moves to a different monitor via *wl_surface.enter*.
 	Scroll up/down adjusts PCM volume by 4%.
 
 *CPU/RAM usage slot* (when *show-sysinfo=true*)
-	Display-only; no mouse bindings.
+	Left-click runs the command configured with *exec=* in
+	*[widget-sysinfo]*. Default command: *foot -e btop*.
+	Right-click and scroll have no binding.
 
 *Network speed slot* (when *show-net=true*)
 	Display-only; no mouse bindings.

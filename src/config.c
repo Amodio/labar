@@ -474,6 +474,8 @@ free_config(Config *cfg)
 	cfg->date_time_format = NULL;
 	free(cfg->net_iface);
 	cfg->net_iface = NULL;
+	free(cfg->sysinfo_exec);
+	cfg->sysinfo_exec = NULL;
 }
 
 // Check if the config file exists
@@ -531,6 +533,7 @@ parse_config_file(FILE *fp)
 	cfg.sysinfo_font_size = 0; // Falls back to WIDGET_SYSINFO_FONT_SIZE
 	cfg.sysinfo_bg_color = 0;  // Transparent by default
 	cfg.sysinfo_tile_width = 0;
+	cfg.sysinfo_exec = strdup("foot -e btop"); // default click command
 	// Default order: net(0), sysinfo(4), apps(3), volume(1), date(2)
 	cfg.widget_order[0] = 4; // sysinfo
 	cfg.widget_order[1] = 0; // net
@@ -1000,6 +1003,12 @@ parse_config_file(FILE *fp)
 				if (verbose >= 2)
 					printf("[DBG²]   widget-sysinfo bg-color: 0x%08X\n",
 						cfg.sysinfo_bg_color);
+			} else if (strcmp(key, "exec") == 0) {
+				free(cfg.sysinfo_exec);
+				cfg.sysinfo_exec = value[0] ? strdup(value) : NULL;
+				if (verbose >= 2)
+					printf("[DBG²]   widget-sysinfo exec: %s\n",
+						cfg.sysinfo_exec ? cfg.sysinfo_exec : "(none)");
 			}
 			continue;
 		}
@@ -1250,6 +1259,8 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp, "#   #00000094 = black 42%% transparent (default)\n");
 	fprintf(fp, "#   #00000000 = fully transparent\n");
 	fprintf(fp, "bg-color=#00000094\n");
+	fprintf(fp, "# exec: command to run on left-click (empty to disable)\n");
+	fprintf(fp, "exec=foot -e btop\n");
 	fprintf(fp, "\n[widget-net]\n");
 	fprintf(fp,
 		"# iface: network interface to monitor (omit for auto-detect)\n");

@@ -156,6 +156,7 @@ typedef struct {
 	int sysinfo_font_size;			// font size in pt (0 = use default)
 	unsigned int sysinfo_bg_color;	// ARGB tile background (0 = transparent)
 	int sysinfo_tile_width;			// computed tile width (set after load)
+	char *sysinfo_exec; // command to run on left-click (NULL = disabled)
 
 	// ---------------------------------------------------------------------------
 	// Widget ordering

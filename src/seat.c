@@ -8,6 +8,7 @@
 #include "exec.h"
 #include "widget-date.h"
 #include "widget-net.h"
+#include "widget-sysinfo.h"
 #include "widget-volume.h"
 
 // Extern declarations for global state (defined in main.c)
@@ -110,6 +111,41 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 				if (!tile)
 					goto done_leave;
 				date_draw_tile(tile, tile_w, tile_h, &app_config,
+					get_corner_flags(idx));
+				if (is_vertical) {
+					for (int ty = 0; ty < tile_w; ty++) {
+						uint32_t *src = tile + ty * tile_h;
+						uint32_t *dst = pixels + (offset + ty) * phys_width;
+						memcpy(dst, src, tile_h * 4);
+					}
+				} else {
+					for (int ty = 0; ty < tile_h; ty++) {
+						uint32_t *src = tile + ty * tile_w;
+						uint32_t *dst = pixels + ty * phys_width + offset;
+						memcpy(dst, src, tile_w * 4);
+					}
+				}
+				free(tile);
+				tile = NULL;
+				wl_surface_attach(surface, buffer, 0, 0);
+				wl_surface_damage(surface, 0, 0, surf_width, surf_height);
+				wl_surface_commit(surface);
+				goto done_leave;
+			} else if (app_config.show_sysinfo &&
+				idx == get_sysinfo_slot_index()) {
+				// Redraw sysinfo tile on leave
+				if (verbose)
+					printf("[DBG] pointer leave sysinfo widget\n");
+				free(tile);
+				int tile_w = (app_config.sysinfo_tile_width > 0 ?
+									 app_config.sysinfo_tile_width :
+									 app_config.icon_size) *
+					buffer_scale;
+				int tile_h = icon_size;
+				tile = malloc(tile_w * tile_h * 4);
+				if (!tile)
+					goto done_leave;
+				sysinfo_draw_tile(tile, tile_w, tile_h, &app_config,
 					get_corner_flags(idx));
 				if (is_vertical) {
 					for (int ty = 0; ty < tile_w; ty++) {
@@ -322,6 +358,7 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 			int date_slot = get_date_slot_index();
 			int volume_slot = get_volume_slot_index();
 			int net_slot = get_net_slot_index();
+			int sysinfo_slot = get_sysinfo_slot_index();
 			if (date_slot >= 0 && icon_index == date_slot) {
 				char tooltip[64];
 				date_get_tooltip(tooltip, sizeof(tooltip));
@@ -330,6 +367,8 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 				printf("[DBG] Hovering over volume widget\n");
 			} else if (net_slot >= 0 && icon_index == net_slot) {
 				printf("[DBG] Hovering over net widget\n");
+			} else if (sysinfo_slot >= 0 && icon_index == sysinfo_slot) {
+				printf("[DBG] Hovering over sysinfo widget\n");
 			} else {
 				int app_idx = SLOT_TO_APP(icon_index);
 				if (app_idx >= 0 && app_idx < app_config.count)
@@ -439,6 +478,7 @@ pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 	int date_slot = get_date_slot_index();
 	int volume_slot = get_volume_slot_index();
 	int net_slot = get_net_slot_index();
+	int sysinfo_slot = get_sysinfo_slot_index();
 
 	int app_idx = SLOT_TO_APP(icon_index);
 	if (icon_index >= 0 && app_idx >= 0 && app_idx < app_config.count) {
@@ -464,6 +504,15 @@ pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 		if (verbose) {
 			printf("[DBG] Mouse button %s (%s) on net widget\n", button_name,
 				state_name);
+		}
+	} else if (sysinfo_slot >= 0 && icon_index == sysinfo_slot) {
+		if (verbose) {
+			printf("[DBG] Mouse button %s (%s) on sysinfo widget\n",
+				button_name, state_name);
+		}
+		if (button == BTN_LEFT && state == WL_POINTER_BUTTON_STATE_PRESSED) {
+			if (app_config.sysinfo_exec && app_config.sysinfo_exec[0])
+				launch_command(app_config.sysinfo_exec);
 		}
 	} else if (date_slot >= 0 && icon_index == date_slot) {
 		// Date widget is display-only; log the click but take no action
@@ -503,6 +552,7 @@ pointer_axis(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 	int date_slot = get_date_slot_index();
 	int volume_slot = get_volume_slot_index();
 	int net_slot = get_net_slot_index();
+	int sysinfo_slot = get_sysinfo_slot_index();
 
 	int app_idx = SLOT_TO_APP(icon_index);
 	if (icon_index >= 0 && app_idx >= 0 && app_idx < app_config.count) {
@@ -522,6 +572,10 @@ pointer_axis(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 	} else if (net_slot >= 0 && icon_index == net_slot) {
 		if (verbose)
 			printf("[DBG] Scroll %s on net widget (no action)\n", direction);
+	} else if (sysinfo_slot >= 0 && icon_index == sysinfo_slot) {
+		if (verbose)
+			printf("[DBG] Scroll %s on sysinfo widget (no action)\n",
+				direction);
 	} else if (date_slot >= 0 && icon_index == date_slot) {
 		if (verbose)
 			printf("[DBG] Scroll %s on date widget (no action)\n", direction);
@@ -575,6 +629,7 @@ pointer_axis_discrete(void *data, struct wl_pointer *wl_pointer, uint32_t axis,
 	int date_slot = get_date_slot_index();
 	int volume_slot = get_volume_slot_index();
 	int net_slot = get_net_slot_index();
+	int sysinfo_slot = get_sysinfo_slot_index();
 
 	int app_idx = SLOT_TO_APP(icon_index);
 	if (icon_index >= 0 && app_idx >= 0 && app_idx < app_config.count) {
@@ -591,6 +646,10 @@ pointer_axis_discrete(void *data, struct wl_pointer *wl_pointer, uint32_t axis,
 	} else if (net_slot >= 0 && icon_index == net_slot) {
 		if (verbose)
 			printf("[DBG] Scroll %s on net widget (no action)\n", direction);
+	} else if (sysinfo_slot >= 0 && icon_index == sysinfo_slot) {
+		if (verbose)
+			printf("[DBG] Scroll %s on sysinfo widget (no action)\n",
+				direction);
 	} else if (date_slot >= 0 && icon_index == date_slot) {
 		if (verbose)
 			printf("[DBG] Scroll %s on date widget (no action)\n", direction);
