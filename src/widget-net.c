@@ -180,19 +180,19 @@ find_default_iface(char *out, int out_len)
  *
  * Format bytes-per-second into a human-readable string.
  * Always uses KB/MB/GB — never raw bytes.
- * Fixed-width output so both lines stay aligned:
- *   "↓ 1234.5 MB/s"   "↑    0.1 KB/s"
+ * Fixed-width output so both lines stay aligned (max 999.9 per unit):
+ *   "1234.5 GB/s ↓"   "   0.1 KB/s ↑"
  */
 static void
 format_speed(char *buf, int buf_len, double bps, const char *arrow)
 {
 	double kbps = bps / 1e3;
 	if (kbps >= 1e6)
-		snprintf(buf, buf_len, "%s %7.1f GB/s", arrow, kbps / 1e6);
+		snprintf(buf, buf_len, "%5.1f GB/s %s", kbps / 1e6, arrow);
 	else if (kbps >= 1e3)
-		snprintf(buf, buf_len, "%s %7.1f MB/s", arrow, kbps / 1e3);
+		snprintf(buf, buf_len, "%5.1f MB/s %s", kbps / 1e3, arrow);
 	else
-		snprintf(buf, buf_len, "%s %7.1f KB/s", arrow, kbps);
+		snprintf(buf, buf_len, "%5.1f KB/s %s", kbps, arrow);
 }
 
 /*
@@ -251,8 +251,8 @@ net_widget_init(Config *cfg)
 	read_proc_net_dev(g_net.iface, &g_net.prev_rx_bytes, &g_net.prev_tx_bytes);
 	clock_gettime(CLOCK_MONOTONIC, &g_net.prev_ts);
 
-	snprintf(g_net.rx_label, sizeof(g_net.rx_label), "↓   0 B/s");
-	snprintf(g_net.tx_label, sizeof(g_net.tx_label), "↑   0 B/s");
+	snprintf(g_net.rx_label, sizeof(g_net.rx_label), "  0.0 KB/s ↓");
+	snprintf(g_net.tx_label, sizeof(g_net.tx_label), "  0.0 KB/s ↑");
 
 	g_net.initialized = 1;
 }
@@ -269,8 +269,8 @@ net_compute_tile_size(const Config *cfg)
 		buffer_scale;
 
 	// Use representative worst-case strings
-	const char *sample_rx = "↓ 999.9 MB/s";
-	const char *sample_tx = "↑ 999.9 MB/s";
+	const char *sample_rx = "999.9 MB/s ↓";
+	const char *sample_tx = "999.9 MB/s ↑";
 
 	cairo_surface_t *cs = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
 	cairo_t *cr = cairo_create(cs);
@@ -385,8 +385,8 @@ net_draw_tile(uint32_t *data, int width, int height, const Config *cfg,
 										   (double)WIDGET_NET_FONT_SIZE) *
 		buffer_scale;
 
-	const char *rx_str = g_net.rx_label[0] ? g_net.rx_label : "↓ …";
-	const char *tx_str = g_net.tx_label[0] ? g_net.tx_label : "↑ …";
+	const char *rx_str = g_net.rx_label[0] ? g_net.rx_label : "… ↓";
+	const char *tx_str = g_net.tx_label[0] ? g_net.tx_label : "… ↑";
 
 	if (verbose >= 4)
 		printf("[NET] tile %dx%d  rx='%s'  tx='%s'\n", width, height, rx_str,

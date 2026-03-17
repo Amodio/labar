@@ -159,10 +159,48 @@ draw_calendar(uint32_t *pixels, int pw, int ph)
 		CAL_BORDER * sc + 20 * sc);
 	cairo_show_text(cr, year_str);
 
-	static const char *month_names[] = {"January", "February", "March", "April",
-		"May", "June", "July", "August", "September", "October", "November",
-		"December"};
-	static const char *dow_names[] = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
+	// Build locale-aware month names and 2-char day-of-week abbreviations
+	// using strftime so they respect LC_TIME / LANG.
+	char month_names[12][32];
+	char dow_names[7][8]; // 2 visible chars + NUL, but strftime may give more
+	{
+		struct tm t = {0};
+		t.tm_year = cur_year - 1900;
+		t.tm_mday = 1;
+		for (int m = 0; m < 12; m++) {
+			t.tm_mon = m;
+			mktime(&t);
+			strftime(month_names[m], sizeof(month_names[m]), "%B", &t);
+		}
+		// Get abbreviated weekday names: Sunday=0 … Saturday=6
+		// Use a known reference date: 2006-01-01 was a Sunday.
+		struct tm ref = {0};
+		ref.tm_year = 106;
+		ref.tm_mon = 0;
+		ref.tm_mday = 1;
+		mktime(&ref);
+		for (int d = 0; d < 7; d++) {
+			char full[32];
+			strftime(full, sizeof(full), "%a", &ref);
+			// Keep at most 2 UTF-8 characters for the header cell
+			int bytes = 0, chars = 0;
+			unsigned char *p = (unsigned char *)full;
+			while (*p && chars < 2) {
+				int len = (*p < 0x80) ? 1 :
+					(*p < 0xE0)		  ? 2 :
+					(*p < 0xF0)		  ? 3 :
+										4;
+				bytes += len;
+				chars++;
+				p += len;
+			}
+			memcpy(dow_names[d], full, bytes);
+			dow_names[d][bytes] = '\0';
+			// Advance reference date by 1 day
+			ref.tm_mday++;
+			mktime(&ref);
+		}
+	}
 
 	for (int m = 1; m <= 12; m++) {
 		int col = (m - 1) % CAL_COLS;
