@@ -281,7 +281,7 @@ date_draw_tile(uint32_t *data, int width, int height, const Config *cfg,
 		snprintf(time_str, sizeof(time_str), "%s", fallback_time);
 	}
 
-	if (verbose >= 2)
+	if (verbose >= 4)
 		printf("[DATE] tile %dx%d  date='%s'  time='%s'\n", width, height,
 			date_str, time_str);
 
@@ -362,7 +362,7 @@ date_widget_needs_repaint(int *last_minute)
 	int cur = t.tm_hour * 60 + t.tm_min;
 
 	if (cur != *last_minute) {
-		if (verbose >= 3)
+		if (verbose >= 4)
 			printf("[DATE] minute changed (%d → %d), scheduling repaint\n",
 				*last_minute, cur);
 		*last_minute = cur;
@@ -388,7 +388,7 @@ date_widget_needs_repaint_seconds(int *last_second)
 	int cur = t.tm_hour * 3600 + t.tm_min * 60 + t.tm_sec;
 
 	if (cur != *last_second) {
-		if (verbose >= 3)
+		if (verbose >= 4)
 			printf("[DATE] second changed (%d → %d), scheduling repaint\n",
 				*last_second, cur);
 		*last_second = cur;
