@@ -49,6 +49,7 @@ executable(
   'src/cache.c',
   'src/widget-volume.c',
   'src/widget-date.c',
+  'src/calendar-popup.c',
   'src/widget-net.c',
   'src/widget-sysinfo.c',
   extra_sources,

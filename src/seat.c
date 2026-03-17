@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <wayland-client.h>
+#include "calendar-popup.h"
 #include "config.h"
 #include "exec.h"
 #include "widget-date.h"
@@ -24,13 +25,14 @@ extern int phys_height;	 // Physical buffer height (surf_height * buffer_scale)
 #define APP_FIRST_SLOT() (get_app_first_slot())
 #define SLOT_TO_APP(slot) ((slot) - APP_FIRST_SLOT())
 
-// ---------------------------------------------------------------------------
-// Pointer listeners — handle mouse events
-// ---------------------------------------------------------------------------
+// Track which wl_surface the pointer is currently over
+static struct wl_surface *pointer_surface = NULL;
+
 void
 pointer_enter(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 	struct wl_surface *surface, wl_fixed_t surface_x, wl_fixed_t surface_y)
 {
+	pointer_surface = surface;
 	if (verbose >= 2)
 		printf("[DBG²] Pointer entered surface at (%.2f, %.2f)\n",
 			wl_fixed_to_double(surface_x), wl_fixed_to_double(surface_y));
@@ -40,6 +42,8 @@ void
 pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 	struct wl_surface *surface)
 {
+	(void)surface;
+	pointer_surface = NULL;
 	if (verbose >= 2)
 		printf("[DBG²] Pointer left surface\n");
 
@@ -208,6 +212,10 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 {
 	current_pointer_x = wl_fixed_to_double(surface_x);
 	current_pointer_y = wl_fixed_to_double(surface_y);
+
+	// Don't process bar hover while popup is open/closing
+	if (calendar_popup_get_surface() != NULL)
+		return;
 
 	// Determine which icon is under the pointer based on layout orientation
 	int is_vertical = (app_config.position == POSITION_LEFT ||
@@ -469,6 +477,21 @@ pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 	const char *state_name =
 		(state == WL_POINTER_BUTTON_STATE_PRESSED) ? "PRESSED" : "RELEASED";
 
+	// If the click is on the calendar popup surface, close it and stop
+	if (state == WL_POINTER_BUTTON_STATE_PRESSED && calendar_popup_is_open() &&
+		pointer_surface == calendar_popup_get_surface()) {
+		if (verbose >= 1)
+			printf("[CAL] click on popup — closing\n");
+		calendar_popup_toggle();
+		return;
+	}
+
+	// If the popup is open/closing and pointer is on its surface, ignore bar
+	// events
+	if (calendar_popup_get_surface() != NULL &&
+		pointer_surface == calendar_popup_get_surface())
+		return;
+
 	// Calculate which icon was clicked based on current pointer position,
 	// accounting for spacing and layout orientation
 	int is_vertical = (app_config.position == POSITION_LEFT ||
@@ -515,12 +538,14 @@ pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 				launch_command(app_config.sysinfo_exec);
 		}
 	} else if (date_slot >= 0 && icon_index == date_slot) {
-		// Date widget is display-only; log the click but take no action
 		if (verbose) {
 			char tooltip[64];
 			date_get_tooltip(tooltip, sizeof(tooltip));
 			printf("[DBG] Mouse button %s (%s) on date widget (%s)\n",
 				button_name, state_name, tooltip);
+		}
+		if (button == BTN_LEFT && state == WL_POINTER_BUTTON_STATE_PRESSED) {
+			calendar_popup_toggle();
 		}
 	} else {
 		if (verbose) {

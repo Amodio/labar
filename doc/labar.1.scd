@@ -340,7 +340,9 @@ moves to a different monitor via *wl_surface.enter*.
 	Display-only; no mouse bindings.
 
 *Date/time slot* (when *show-date=true*)
-	Display-only; no mouse bindings.
+	Left-click opens a built-in yearly calendar popup rendered
+	directly on the bar. Clicking the popup closes it.
+	Right-click and scroll have no binding.
 
 # ENVIRONMENT
 

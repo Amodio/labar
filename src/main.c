@@ -21,6 +21,7 @@
 #ifdef HAVE_GTK4
 #include "config-window.h"
 #endif
+#include "calendar-popup.h"
 #include "exec.h"
 #include "seat.h"
 #include "widget-date.h"
@@ -1764,9 +1765,18 @@ main(int argc, char *argv[])
 		if (wl_display_flush(display) < 0)
 			break;
 
+		// 1b. Flush popup surface if open
+		if (calendar_popup_is_open())
+			wl_display_flush(display);
+
 		// 2. Dispatch all already-queued events without blocking
 		if (wl_display_dispatch_pending(display) < 0)
 			break;
+
+		// 2b. Execute deferred calendar popup close — after dispatching
+		//     all pending events so no in-flight events reference the
+		//     about-to-be-destroyed surface proxies.
+		calendar_popup_dispatch();
 
 		// 3. Repaint date tile if the displayed string has changed
 		if (app_config.show_date) {
