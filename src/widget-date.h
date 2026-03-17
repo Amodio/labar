@@ -68,7 +68,12 @@ int date_compute_tile_size(const Config *cfg);
 //   height – tile height in pixels
 //   cfg    – application config (format strings, colors, sizes)
 // ---------------------------------------------------------------------------
-void date_draw_tile(uint32_t *data, int width, int height, const Config *cfg);
+// corner_flags bits: bit 0 = round left corners, bit 1 = round right corners
+// Pass TILE_ROUND_ALL for a standalone tile; use TILE_ROUND_LEFT/RIGHT when
+// adjacent to another bg-enabled tile so the group looks like one unified pill.
+// (TILE_ROUND_* are defined in config.h)
+void date_draw_tile(uint32_t *data, int width, int height, const Config *cfg,
+	int corner_flags);
 
 // ---------------------------------------------------------------------------
 // date_get_tooltip

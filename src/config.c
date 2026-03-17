@@ -524,12 +524,19 @@ parse_config_file(FILE *fp)
 	cfg.net_tx_color = 0;			   // Falls back to WIDGET_NET_TX_COLOR
 	cfg.net_font_size = 0;			   // Falls back to WIDGET_NET_FONT_SIZE
 	cfg.net_bg_color = 0x33000000;	   // dark, 80% transparent by default
-	cfg.net_tile_width = 0; // Set after load by net_compute_tile_size()
-	// Default widget order: net(0), apps(3), volume(1), date(2)
-	cfg.widget_order[0] = 0; // net   first
-	cfg.widget_order[1] = 3; // apps  second
-	cfg.widget_order[2] = 1; // volume third
-	cfg.widget_order[3] = 2; // date  last
+	cfg.net_tile_width = 0;	   // Set after load by net_compute_tile_size()
+	cfg.show_sysinfo = 1;	   // Sysinfo widget on by default
+	cfg.sysinfo_cpu_color = 0; // Falls back to WIDGET_SYSINFO_CPU_COLOR
+	cfg.sysinfo_ram_color = 0; // Falls back to WIDGET_SYSINFO_RAM_COLOR
+	cfg.sysinfo_font_size = 0; // Falls back to WIDGET_SYSINFO_FONT_SIZE
+	cfg.sysinfo_bg_color = 0;  // Transparent by default
+	cfg.sysinfo_tile_width = 0;
+	// Default order: net(0), sysinfo(4), apps(3), volume(1), date(2)
+	cfg.widget_order[0] = 4; // sysinfo
+	cfg.widget_order[1] = 0; // net
+	cfg.widget_order[2] = 3; // apps
+	cfg.widget_order[3] = 1; // volume
+	cfg.widget_order[4] = 2; // date
 	if (!cfg.apps)
 		return cfg;
 
@@ -540,6 +547,7 @@ parse_config_file(FILE *fp)
 	int in_global_section = 0;
 	int in_widget_date_section = 0;
 	int in_widget_net_section = 0;
+	int in_widget_sysinfo_section = 0;
 
 	if (verbose >= 2)
 		printf("[DBG²] Parsing config file\n");
@@ -611,6 +619,7 @@ parse_config_file(FILE *fp)
 					in_apps_section = 0;
 					in_widget_date_section = 0;
 					in_widget_net_section = 0;
+					in_widget_sysinfo_section = 0;
 					if (verbose >= 2)
 						printf("[DBG²] Entering "
 							   "[global] section\n");
@@ -623,6 +632,7 @@ parse_config_file(FILE *fp)
 					in_apps_section = 1;
 					in_widget_date_section = 0;
 					in_widget_net_section = 0;
+					in_widget_sysinfo_section = 0;
 					if (verbose >= 2)
 						printf("[DBG²] Entering [apps] "
 							   "section\n");
@@ -634,6 +644,7 @@ parse_config_file(FILE *fp)
 					in_apps_section = 0;
 					in_widget_date_section = 1;
 					in_widget_net_section = 0;
+					in_widget_sysinfo_section = 0;
 					if (verbose >= 2)
 						printf("[DBG²] Entering [widget-date] section\n");
 				} else if (strncmp(line, "[widget-net]", 12) == 0) {
@@ -641,13 +652,23 @@ parse_config_file(FILE *fp)
 					in_apps_section = 0;
 					in_widget_date_section = 0;
 					in_widget_net_section = 1;
+					in_widget_sysinfo_section = 0;
 					if (verbose >= 2)
 						printf("[DBG²] Entering [widget-net] section\n");
+				} else if (strncmp(line, "[widget-sysinfo]", 16) == 0) {
+					in_global_section = 0;
+					in_apps_section = 0;
+					in_widget_date_section = 0;
+					in_widget_net_section = 0;
+					in_widget_sysinfo_section = 1;
+					if (verbose >= 2)
+						printf("[DBG²] Entering [widget-sysinfo] section\n");
 				} else {
 					in_global_section = 0;
 					in_apps_section = 0;
 					in_widget_date_section = 0;
 					in_widget_net_section = 0;
+					in_widget_sysinfo_section = 0;
 					if (verbose >= 2)
 						printf("[DBG²] Unknown "
 							   "section: %s\n",
@@ -753,16 +774,23 @@ parse_config_file(FILE *fp)
 				if (verbose >= 2)
 					printf("[DBG²]   show-net: %s\n",
 						cfg.show_net ? "true" : "false");
+			} else if (strcmp(key, "show-sysinfo") == 0) {
+				cfg.show_sysinfo =
+					(strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+				if (verbose >= 2)
+					printf("[DBG²]   show-sysinfo: %s\n",
+						cfg.show_sysinfo ? "true" : "false");
 			} else if (strcmp(key, "widget-order") == 0) {
-				// Format: "net,apps,volume,date" — any permutation of the
-				// four token names; missing tokens keep their default position.
-				const char *names[4] = {"net", "volume", "date", "apps"};
-				int order[4] = {0, 3, 1, 2}; // default
+				// Format: "net,sysinfo,apps,volume,date"
+				const char *names[5] = {
+					"net", "volume", "date", "apps", "sysinfo"};
+				int order[5] = {
+					4, 0, 3, 1, 2}; // default: sysinfo,net,apps,volume,date
 				char tmp[64];
 				strncpy(tmp, value, sizeof(tmp) - 1);
 				tmp[sizeof(tmp) - 1] = '\0';
 				char *tok = tmp;
-				for (int i = 0; i < 4; i++) {
+				for (int i = 0; i < 5; i++) {
 					while (*tok == ' ' || *tok == ',')
 						tok++;
 					if (!*tok)
@@ -772,7 +800,7 @@ parse_config_file(FILE *fp)
 						end++;
 					char saved = *end;
 					*end = '\0';
-					for (int j = 0; j < 4; j++) {
+					for (int j = 0; j < 5; j++) {
 						if (strcmp(tok, names[j]) == 0) {
 							order[i] = j;
 							break;
@@ -781,12 +809,13 @@ parse_config_file(FILE *fp)
 					*end = saved;
 					tok = end;
 				}
-				for (int i = 0; i < 4; i++)
+				for (int i = 0; i < 5; i++)
 					cfg.widget_order[i] = order[i];
 				if (verbose >= 2)
-					printf("[DBG²]   widget-order: %s,%s,%s,%s\n",
+					printf("[DBG²]   widget-order: %s,%s,%s,%s,%s\n",
 						names[cfg.widget_order[0]], names[cfg.widget_order[1]],
-						names[cfg.widget_order[2]], names[cfg.widget_order[3]]);
+						names[cfg.widget_order[2]], names[cfg.widget_order[3]],
+						names[cfg.widget_order[4]]);
 			} else if (strcmp(key, "widget-net-bg-color") == 0) {
 				const char *hex = value;
 				if (hex[0] == '#')
@@ -921,6 +950,56 @@ parse_config_file(FILE *fp)
 				if (verbose >= 2)
 					printf("[DBG²]   widget-net bg-color: 0x%08X\n",
 						cfg.net_bg_color);
+			}
+			continue;
+		}
+
+		// Handle [widget-sysinfo] section
+		if (in_widget_sysinfo_section) {
+			if (strcmp(key, "cpu-color") == 0) {
+				const char *hex = value;
+				if (hex[0] == '#')
+					hex++;
+				unsigned long parsed = strtoul(hex, NULL, 16);
+				if (strlen(hex) <= 6)
+					cfg.sysinfo_cpu_color = 0xFF000000 | (unsigned int)parsed;
+				else
+					cfg.sysinfo_cpu_color =
+						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
+				if (verbose >= 2)
+					printf("[DBG²]   widget-sysinfo cpu-color: 0x%08X\n",
+						cfg.sysinfo_cpu_color);
+			} else if (strcmp(key, "ram-color") == 0) {
+				const char *hex = value;
+				if (hex[0] == '#')
+					hex++;
+				unsigned long parsed = strtoul(hex, NULL, 16);
+				if (strlen(hex) <= 6)
+					cfg.sysinfo_ram_color = 0xFF000000 | (unsigned int)parsed;
+				else
+					cfg.sysinfo_ram_color =
+						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
+				if (verbose >= 2)
+					printf("[DBG²]   widget-sysinfo ram-color: 0x%08X\n",
+						cfg.sysinfo_ram_color);
+			} else if (strcmp(key, "size") == 0) {
+				cfg.sysinfo_font_size = atoi(value);
+				if (verbose >= 2)
+					printf("[DBG²]   widget-sysinfo size: %d\n",
+						cfg.sysinfo_font_size);
+			} else if (strcmp(key, "bg-color") == 0) {
+				const char *hex = value;
+				if (hex[0] == '#')
+					hex++;
+				unsigned long parsed = strtoul(hex, NULL, 16);
+				if (strlen(hex) <= 6)
+					cfg.sysinfo_bg_color = 0xFF000000 | (unsigned int)parsed;
+				else
+					cfg.sysinfo_bg_color =
+						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
+				if (verbose >= 2)
+					printf("[DBG²]   widget-sysinfo bg-color: 0x%08X\n",
+						cfg.sysinfo_bg_color);
 			}
 			continue;
 		}
@@ -1150,14 +1229,27 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp, "#   top (default):    above normal windows\n");
 	fprintf(fp, "#   overlay:          on top of everything\n");
 	fprintf(fp, "layer=top\n");
-	fprintf(fp, "# show-net: show the network speed widget (first slot)\n");
+	fprintf(fp, "# show-net: show the network speed widget\n");
 	fprintf(fp, "show-net=true\n");
+	fprintf(fp, "# show-sysinfo: show the CPU/RAM usage widget\n");
+	fprintf(fp, "show-sysinfo=true\n");
 	fprintf(fp, "# show-volume: show the volume widget (after apps)\n");
 	fprintf(fp, "show-volume=true\n");
 	fprintf(fp, "# show-date: show the date/time widget (last slot)\n");
 	fprintf(fp, "show-date=true\n");
 	fprintf(fp, "# widget-order: bar order of widgets and app icons\n");
-	fprintf(fp, "widget-order=net,apps,volume,date\n");
+	fprintf(fp, "widget-order=sysinfo,net,apps,volume,date\n");
+	fprintf(fp, "\n[widget-sysinfo]\n");
+	fprintf(fp, "# cpu-color: color for the CPU usage line\n");
+	fprintf(fp, "cpu-color=#FFEB3B\n");
+	fprintf(fp, "# ram-color: color for the RAM usage line\n");
+	fprintf(fp, "ram-color=#66BB6A\n");
+	fprintf(fp, "# size: font size in pt\n");
+	fprintf(fp, "size=14\n");
+	fprintf(fp, "# bg-color: tile background color (#RRGGBBAA)\n");
+	fprintf(fp, "#   #00000094 = black 42%% transparent (default)\n");
+	fprintf(fp, "#   #00000000 = fully transparent\n");
+	fprintf(fp, "bg-color=#00000094\n");
 	fprintf(fp, "\n[widget-net]\n");
 	fprintf(fp,
 		"# iface: network interface to monitor (omit for auto-detect)\n");

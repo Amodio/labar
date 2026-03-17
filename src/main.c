@@ -25,6 +25,7 @@
 #include "seat.h"
 #include "widget-date.h"
 #include "widget-net.h"
+#include "widget-sysinfo.h"
 #include "widget-volume.h"
 #include "wlr-layer-shell-unstable-v1-protocol.h"
 
@@ -104,6 +105,7 @@ int last_hovered_icon = -1;
 #define WIDGET_ID_VOLUME 1
 #define WIDGET_ID_DATE 2
 #define WIDGET_ID_APPS 3 // sentinel: marks the app-icons block position
+#define WIDGET_ID_SYSINFO 4
 
 static int
 widget_enabled(int id)
@@ -117,6 +119,8 @@ widget_enabled(int id)
 		return app_config.show_date;
 	case WIDGET_ID_APPS:
 		return app_config.count > 0;
+	case WIDGET_ID_SYSINFO:
+		return app_config.show_sysinfo;
 	default:
 		return 0;
 	}
@@ -129,7 +133,7 @@ static int
 get_total_widget_count(void)
 {
 	int n = app_config.count;
-	for (int i = 0; i < 4; i++)
+	for (int i = 0; i < 5; i++)
 		if (app_config.widget_order[i] != WIDGET_ID_APPS &&
 			widget_enabled(app_config.widget_order[i]))
 			n++;
@@ -139,7 +143,7 @@ get_total_widget_count(void)
 // ---------------------------------------------------------------------------
 // slot_index_for_widget
 //
-// Walks widget_order[4].  The WIDGET_ID_APPS entry marks where the app block
+// Walks widget_order[5].  The WIDGET_ID_APPS entry marks where the app block
 // sits.  Widgets before it are pre-app; widgets after it are post-app.
 // ---------------------------------------------------------------------------
 static int
@@ -152,7 +156,7 @@ slot_index_for_widget(int id)
 	int post = 0; // enabled widgets between apps block and id
 	int past_apps = 0;
 
-	for (int i = 0; i < 4; i++) {
+	for (int i = 0; i < 5; i++) {
 		int wid = app_config.widget_order[i];
 		if (wid == WIDGET_ID_APPS) {
 			past_apps = 1;
@@ -192,6 +196,12 @@ get_date_slot_index(void)
 	return slot_index_for_widget(WIDGET_ID_DATE);
 }
 
+int
+get_sysinfo_slot_index(void)
+{
+	return slot_index_for_widget(WIDGET_ID_SYSINFO);
+}
+
 // ---------------------------------------------------------------------------
 // get_app_first_slot
 //
@@ -202,7 +212,7 @@ int
 get_app_first_slot(void)
 {
 	int pre = 0;
-	for (int i = 0; i < 4; i++) {
+	for (int i = 0; i < 5; i++) {
 		int wid = app_config.widget_order[i];
 		if (wid == WIDGET_ID_APPS)
 			break;
@@ -210,6 +220,113 @@ get_app_first_slot(void)
 			pre++;
 	}
 	return pre;
+}
+
+// ---------------------------------------------------------------------------
+// tile_has_bg / get_corner_flags
+//
+// Returns whether the widget occupying slot_index has a background colour,
+// and computes the TILE_ROUND_LEFT / TILE_ROUND_RIGHT flags for that slot so
+// that adjacent bg-enabled tiles share a unified pill shape.
+// ---------------------------------------------------------------------------
+static int
+tile_has_bg(int slot_index)
+{
+	int date_slot = get_date_slot_index();
+	int net_slot = get_net_slot_index();
+	int sysinfo_slot = get_sysinfo_slot_index();
+	if (slot_index == date_slot)
+		return app_config.date_bg_color != 0;
+	if (slot_index == net_slot)
+		return app_config.net_bg_color != 0;
+	if (slot_index == sysinfo_slot)
+		return app_config.sysinfo_bg_color != 0;
+	return 0;
+}
+
+int
+get_corner_flags(int slot_index)
+{
+	int total = get_total_widget_count();
+	int flags = TILE_ROUND_ALL;
+	// If the previous slot also has a bg, don't round the left side
+	if (slot_index > 0 && tile_has_bg(slot_index - 1))
+		flags &= ~TILE_ROUND_LEFT;
+	// If the next slot also has a bg, don't round the right side
+	if (slot_index < total - 1 && tile_has_bg(slot_index + 1))
+		flags &= ~TILE_ROUND_RIGHT;
+	return flags;
+}
+
+// ---------------------------------------------------------------------------
+// fill_bg_gaps
+//
+// After all tiles are drawn, fill the icon_spacing gap between every pair of
+// adjacent bg-enabled slots so they look like a single unified pill.
+// Uses the left tile's bg colour for the gap fill.
+// ---------------------------------------------------------------------------
+static void
+fill_bg_gaps(int is_vertical, int icon_size_phys)
+{
+	if (!pixels || !buffer)
+		return;
+	int total = get_total_widget_count();
+	int spacing = app_config.icon_spacing * buffer_scale;
+	if (spacing <= 0)
+		return;
+
+	for (int i = 0; i < total - 1; i++) {
+		if (!tile_has_bg(i) || !tile_has_bg(i + 1))
+			continue;
+
+		// Both adjacent slots have a background — fill the gap between them
+		unsigned int bg_col = 0;
+		int net_s = get_net_slot_index();
+		int si_s = get_sysinfo_slot_index();
+		int date_s = get_date_slot_index();
+		if (i == net_s)
+			bg_col = app_config.net_bg_color;
+		else if (i == si_s)
+			bg_col = app_config.sysinfo_bg_color;
+		else if (i == date_s)
+			bg_col = app_config.date_bg_color;
+		if (!bg_col)
+			continue;
+
+		// Pixel position right after slot i ends
+		int gap_start = (get_offset_for_icon(i + 1) - app_config.icon_spacing) *
+			buffer_scale;
+		if (gap_start < 0)
+			gap_start = 0;
+
+		double bg_a = ((bg_col >> 24) & 0xFF) / 255.0;
+		double bg_r = ((bg_col >> 16) & 0xFF) / 255.0;
+		double bg_g = ((bg_col >> 8) & 0xFF) / 255.0;
+		double bg_b = ((bg_col) & 0xFF) / 255.0;
+		uint32_t fill_px = ((uint8_t)(bg_a * 255) << 24) |
+			((uint8_t)(bg_r * bg_a * 255) << 16) |
+			((uint8_t)(bg_g * bg_a * 255) << 8) | (uint8_t)(bg_b * bg_a * 255);
+
+		// Premultiplied alpha blend into existing pixels
+		(void)fill_px; // use Cairo instead for correct alpha blend
+
+		// Create a tiny Cairo surface over the gap region and paint it
+		int surf_w = phys_width;
+		int surf_h = icon_size_phys;
+		cairo_surface_t *cs =
+			cairo_image_surface_create_for_data((unsigned char *)pixels,
+				CAIRO_FORMAT_ARGB32, surf_w, surf_h, surf_w * 4);
+		cairo_t *cr = cairo_create(cs);
+		cairo_set_source_rgba(cr, bg_r, bg_g, bg_b, bg_a);
+		cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+		if (is_vertical)
+			cairo_rectangle(cr, 0, gap_start, surf_w, spacing);
+		else
+			cairo_rectangle(cr, gap_start, 0, spacing, surf_h);
+		cairo_fill(cr);
+		cairo_destroy(cr);
+		cairo_surface_destroy(cs);
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -235,6 +352,7 @@ get_icon_at_position(double coord)
 	int spacing = app_config.icon_spacing;
 	int date_slot = get_date_slot_index();
 	int net_slot = get_net_slot_index();
+	int sysinfo_slot = get_sysinfo_slot_index();
 	int total_count = get_total_widget_count();
 
 	int pos = 0;
@@ -244,6 +362,8 @@ get_icon_at_position(double coord)
 			slot_size = app_config.date_tile_width;
 		else if (i == net_slot && app_config.net_tile_width > 0)
 			slot_size = app_config.net_tile_width;
+		else if (i == sysinfo_slot && app_config.sysinfo_tile_width > 0)
+			slot_size = app_config.sysinfo_tile_width;
 		else
 			slot_size = icon_size;
 		int slot_end = pos + slot_size;
@@ -269,6 +389,7 @@ get_offset_for_icon(int icon_index)
 	int spacing = app_config.icon_spacing;
 	int date_slot = get_date_slot_index();
 	int net_slot = get_net_slot_index();
+	int sysinfo_slot = get_sysinfo_slot_index();
 
 	int pos = 0;
 	for (int i = 0; i < icon_index; i++) {
@@ -277,6 +398,8 @@ get_offset_for_icon(int icon_index)
 			slot_size = app_config.date_tile_width;
 		else if (i == net_slot && app_config.net_tile_width > 0)
 			slot_size = app_config.net_tile_width;
+		else if (i == sysinfo_slot && app_config.sysinfo_tile_width > 0)
+			slot_size = app_config.sysinfo_tile_width;
 		else
 			slot_size = icon_size;
 		pos += slot_size + spacing;
@@ -599,7 +722,7 @@ date_repaint_tile(struct wl_surface *wl_surf)
 	if (!tile)
 		return;
 
-	date_draw_tile(tile, tile_w, tile_h, &app_config);
+	date_draw_tile(tile, tile_w, tile_h, &app_config, get_corner_flags(slot));
 
 	if (is_vertical) {
 		// Vertical bar: offset is along Y; tile_w is the height, tile_h is the
@@ -619,6 +742,9 @@ date_repaint_tile(struct wl_surface *wl_surf)
 		}
 	}
 	free(tile);
+
+	// Fill spacing gaps between adjacent bg-enabled tiles
+	fill_bg_gaps(is_vertical, icon_size);
 
 	wl_surface_attach(wl_surf, buffer, 0, 0);
 	wl_surface_damage(wl_surf, 0, 0, surf_width, surf_height);
@@ -651,7 +777,7 @@ net_repaint_tile(struct wl_surface *wl_surf)
 	if (!tile)
 		return;
 
-	net_draw_tile(tile, tile_w, tile_h, &app_config);
+	net_draw_tile(tile, tile_w, tile_h, &app_config, get_corner_flags(slot));
 
 	if (is_vertical) {
 		for (int ty = 0; ty < tile_w; ty++) {
@@ -667,6 +793,59 @@ net_repaint_tile(struct wl_surface *wl_surf)
 		}
 	}
 	free(tile);
+
+	// Fill spacing gaps between adjacent bg-enabled tiles
+	fill_bg_gaps(is_vertical, icon_size);
+
+	wl_surface_attach(wl_surf, buffer, 0, 0);
+	wl_surface_damage(wl_surf, 0, 0, surf_width, surf_height);
+	wl_surface_commit(wl_surf);
+}
+
+// ---------------------------------------------------------------------------
+// sysinfo_repaint_tile
+// ---------------------------------------------------------------------------
+static void
+sysinfo_repaint_tile(struct wl_surface *wl_surf)
+{
+	if (!buffer || !app_config.show_sysinfo)
+		return;
+
+	int is_vertical = (app_config.position == POSITION_LEFT ||
+		app_config.position == POSITION_RIGHT);
+	int slot = get_sysinfo_slot_index();
+	int offset = get_offset_for_icon(slot) * buffer_scale;
+	int icon_size = app_config.icon_size * buffer_scale;
+	int tile_w =
+		(app_config.sysinfo_tile_width > 0 ? app_config.sysinfo_tile_width :
+											 app_config.icon_size) *
+		buffer_scale;
+	int tile_h = icon_size;
+
+	uint32_t *tile = malloc(tile_w * tile_h * 4);
+	if (!tile)
+		return;
+
+	sysinfo_draw_tile(tile, tile_w, tile_h, &app_config,
+		get_corner_flags(slot));
+
+	if (is_vertical) {
+		for (int ty = 0; ty < tile_w; ty++) {
+			uint32_t *src = tile + ty * tile_h;
+			uint32_t *dst = pixels + (offset + ty) * phys_width;
+			memcpy(dst, src, tile_h * 4);
+		}
+	} else {
+		for (int ty = 0; ty < tile_h; ty++) {
+			uint32_t *src = tile + ty * tile_w;
+			uint32_t *dst = pixels + ty * phys_width + offset;
+			memcpy(dst, src, tile_w * 4);
+		}
+	}
+	free(tile);
+
+	// Fill spacing gaps between adjacent bg-enabled tiles
+	fill_bg_gaps(is_vertical, icon_size);
 
 	wl_surface_attach(wl_surf, buffer, 0, 0);
 	wl_surface_damage(wl_surf, 0, 0, surf_width, surf_height);
@@ -780,7 +959,8 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 				int tile_h = icon_size;
 				uint32_t *tile = malloc(tile_w * tile_h * 4);
 				if (tile) {
-					date_draw_tile(tile, tile_w, tile_h, &app_config);
+					date_draw_tile(tile, tile_w, tile_h, &app_config,
+						get_corner_flags(slot));
 					// Vertical bar: along-bar = Y, tile_w is the height of the
 					// slot
 					for (int ty = 0; ty < tile_w; ty++) {
@@ -803,7 +983,30 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 				int tile_h = icon_size;
 				uint32_t *tile = malloc(tile_w * tile_h * 4);
 				if (tile) {
-					net_draw_tile(tile, tile_w, tile_h, &app_config);
+					net_draw_tile(tile, tile_w, tile_h, &app_config,
+						get_corner_flags(slot));
+					for (int ty = 0; ty < tile_w; ty++) {
+						uint32_t *src = tile + ty * tile_h;
+						uint32_t *dst = pixels + (offset + ty) * phys_width;
+						memcpy(dst, src, tile_h * 4);
+					}
+					free(tile);
+				}
+			}
+
+			// Draw sysinfo widget tile if enabled
+			if (app_config.show_sysinfo) {
+				int slot = get_sysinfo_slot_index();
+				int offset = get_offset_for_icon(slot) * buffer_scale;
+				int tile_w = (app_config.sysinfo_tile_width > 0 ?
+									 app_config.sysinfo_tile_width :
+									 app_config.icon_size) *
+					buffer_scale;
+				int tile_h = icon_size;
+				uint32_t *tile = malloc(tile_w * tile_h * 4);
+				if (tile) {
+					sysinfo_draw_tile(tile, tile_w, tile_h, &app_config,
+						get_corner_flags(slot));
 					for (int ty = 0; ty < tile_w; ty++) {
 						uint32_t *src = tile + ty * tile_h;
 						uint32_t *dst = pixels + (offset + ty) * phys_width;
@@ -887,7 +1090,8 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 				int tile_h = icon_size;
 				uint32_t *tile = malloc(tile_w * tile_h * 4);
 				if (tile) {
-					date_draw_tile(tile, tile_w, tile_h, &app_config);
+					date_draw_tile(tile, tile_w, tile_h, &app_config,
+						get_corner_flags(slot));
 					// Horizontal bar: along-bar = X, tile_w is the width of the
 					// slot
 					for (int ty = 0; ty < tile_h; ty++) {
@@ -910,7 +1114,8 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 				int tile_h = icon_size;
 				uint32_t *tile = malloc(tile_w * tile_h * 4);
 				if (tile) {
-					net_draw_tile(tile, tile_w, tile_h, &app_config);
+					net_draw_tile(tile, tile_w, tile_h, &app_config,
+						get_corner_flags(slot));
 					for (int ty = 0; ty < tile_h; ty++) {
 						uint32_t *src = tile + ty * tile_w;
 						uint32_t *dst = pixels + ty * phys_width + offset;
@@ -919,6 +1124,35 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 					free(tile);
 				}
 			}
+
+			// Draw sysinfo widget tile if enabled
+			if (app_config.show_sysinfo) {
+				int slot = get_sysinfo_slot_index();
+				int offset = get_offset_for_icon(slot) * buffer_scale;
+				int tile_w = (app_config.sysinfo_tile_width > 0 ?
+									 app_config.sysinfo_tile_width :
+									 app_config.icon_size) *
+					buffer_scale;
+				int tile_h = icon_size;
+				uint32_t *tile = malloc(tile_w * tile_h * 4);
+				if (tile) {
+					sysinfo_draw_tile(tile, tile_w, tile_h, &app_config,
+						get_corner_flags(slot));
+					for (int ty = 0; ty < tile_h; ty++) {
+						uint32_t *src = tile + ty * tile_w;
+						uint32_t *dst = pixels + ty * phys_width + offset;
+						memcpy(dst, src, tile_w * 4);
+					}
+					free(tile);
+				}
+			}
+		}
+
+		// Fill spacing gaps between adjacent bg-enabled tiles
+		{
+			int is_vert = (app_config.position == POSITION_LEFT ||
+				app_config.position == POSITION_RIGHT);
+			fill_bg_gaps(is_vert, icon_size);
 		}
 
 		// Tell the compositor how to interpret the buffer pixels.
@@ -1015,6 +1249,14 @@ trigger_redraw(void)
 	if (app_config.show_net) {
 		int phys_w = net_compute_tile_size(&app_config);
 		app_config.net_tile_width = (buffer_scale > 1) ?
+			(phys_w + buffer_scale - 1) / buffer_scale :
+			phys_w;
+	}
+
+	// Recompute the sysinfo tile width at the new scale.
+	if (app_config.show_sysinfo) {
+		int phys_w = sysinfo_compute_tile_size(&app_config);
+		app_config.sysinfo_tile_width = (buffer_scale > 1) ?
 			(phys_w + buffer_scale - 1) / buffer_scale :
 			phys_w;
 	}
@@ -1294,13 +1536,21 @@ main(int argc, char *argv[])
 	}
 
 	// Compute the net widget tile width and seed the byte counters.
-	// Same physical→logical conversion as for the date tile.
 	if (app_config.show_net) {
 		int phys_w = net_compute_tile_size(&app_config);
 		app_config.net_tile_width = (buffer_scale > 1) ?
 			(phys_w + buffer_scale - 1) / buffer_scale :
 			phys_w;
 		net_widget_init(&app_config);
+	}
+
+	// Compute the sysinfo widget tile width and seed CPU counters.
+	if (app_config.show_sysinfo) {
+		int phys_w = sysinfo_compute_tile_size(&app_config);
+		app_config.sysinfo_tile_width = (buffer_scale > 1) ?
+			(phys_w + buffer_scale - 1) / buffer_scale :
+			phys_w;
+		sysinfo_widget_init();
 	}
 
 	// Validate that all required globals were found
@@ -1342,6 +1592,7 @@ main(int argc, char *argv[])
 	int total_count = get_total_widget_count();
 	int date_slot_idx = get_date_slot_index();
 	int net_slot_idx = get_net_slot_index();
+	int sysinfo_slot_idx = get_sysinfo_slot_index();
 	int icon_span = 0;
 	for (int i = 0; i < total_count; i++) {
 		if (i > 0)
@@ -1350,6 +1601,8 @@ main(int argc, char *argv[])
 			icon_span += app_config.date_tile_width;
 		else if (i == net_slot_idx && app_config.net_tile_width > 0)
 			icon_span += app_config.net_tile_width;
+		else if (i == sysinfo_slot_idx && app_config.sysinfo_tile_width > 0)
+			icon_span += app_config.sysinfo_tile_width;
 		else
 			icon_span += app_config.icon_size;
 	}
@@ -1457,9 +1710,10 @@ main(int argc, char *argv[])
 	int date_last_minute = -1;
 	int date_last_second = -1;
 
-	// Persistent state for the network widget repaint timer.
+	// Persistent state for the network and sysinfo widget repaint timers.
 	// Initialised to -1 so the first sample fires immediately.
 	int net_last_second = -1;
+	int sysinfo_last_second = -1;
 
 	// Determine the required poll timeout from the configured time format.
 	//
@@ -1536,13 +1790,23 @@ main(int argc, char *argv[])
 			}
 		}
 
+		// 3c. Repaint sysinfo tile once per second
+		if (app_config.show_sysinfo) {
+			if (sysinfo_widget_needs_repaint(&sysinfo_last_second)) {
+				sysinfo_repaint_tile(surface);
+				wl_display_flush(display);
+			}
+		}
+
 		// 4. Compute the timeout for this iteration
 		int timeout_ms;
-		if (!app_config.show_date && !app_config.show_net) {
+		if (!app_config.show_date && !app_config.show_net &&
+			!app_config.show_sysinfo) {
 			// No timer-driven widgets — block indefinitely on Wayland events
 			timeout_ms = -1;
-		} else if (app_config.show_net || needs_seconds) {
-			// Net widget always needs 1-second resolution.
+		} else if (app_config.show_net || app_config.show_sysinfo ||
+			needs_seconds) {
+			// Net/sysinfo widgets need 1-second resolution.
 			// Date widget with seconds directive also needs this.
 			// Use 200 ms so we never miss a tick due to scheduling jitter.
 			timeout_ms = 200;

@@ -77,7 +77,8 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 				tile = malloc(tile_w * tile_h * 4);
 				if (!tile)
 					goto done_leave;
-				net_draw_tile(tile, tile_w, tile_h, &app_config);
+				net_draw_tile(tile, tile_w, tile_h, &app_config,
+					get_corner_flags(idx));
 				if (is_vertical) {
 					for (int ty = 0; ty < tile_w; ty++) {
 						uint32_t *src = tile + ty * tile_h;
@@ -108,7 +109,8 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 				tile = malloc(tile_w * tile_h * 4);
 				if (!tile)
 					goto done_leave;
-				date_draw_tile(tile, tile_w, tile_h, &app_config);
+				date_draw_tile(tile, tile_w, tile_h, &app_config,
+					get_corner_flags(idx));
 				if (is_vertical) {
 					for (int ty = 0; ty < tile_w; ty++) {
 						uint32_t *src = tile + ty * tile_h;
@@ -226,7 +228,8 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 					uint32_t *ntile = malloc(tile_w * tile_h * 4);
 					if (!ntile)
 						continue;
-					net_draw_tile(ntile, tile_w, tile_h, &app_config);
+					net_draw_tile(ntile, tile_w, tile_h, &app_config,
+						get_corner_flags(idx));
 					if (is_vertical) {
 						for (int ty = 0; ty < tile_w; ty++) {
 							uint32_t *src = ntile + ty * tile_h;
@@ -255,7 +258,8 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 					uint32_t *dtile = malloc(tile_w * tile_h * 4);
 					if (!dtile)
 						continue;
-					date_draw_tile(dtile, tile_w, tile_h, &app_config);
+					date_draw_tile(dtile, tile_w, tile_h, &app_config,
+						get_corner_flags(idx));
 					if (is_vertical) {
 						for (int ty = 0; ty < tile_w; ty++) {
 							uint32_t *src = dtile + ty * tile_h;

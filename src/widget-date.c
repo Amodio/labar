@@ -145,9 +145,13 @@ date_compute_tile_size(const Config *cfg)
 	cairo_destroy(cr);
 	cairo_surface_destroy(cs);
 
-	// Width only: widest line + 20 % padding each side
-	double max_w = de.width > te.width ? de.width : te.width;
-	int w = (int)(max_w * 1.4) + 4;
+	// Width: use x_advance (total pen movement) which is more reliable than
+	// ink width for multi-char strings.  Add 30% padding (15% each side).
+	// Also account for x_bearing in case the first glyph has a left overhang.
+	double d_full = de.x_advance - de.x_bearing;
+	double t_full = te.x_advance - te.x_bearing;
+	double max_w = d_full > t_full ? d_full : t_full;
+	int w = (int)(max_w * 1.3) + 16; // explicit 8px padding each side
 
 	// Never go narrower than icon_size
 	int icon_size = (cfg && cfg->icon_size > 0) ? cfg->icon_size : 64;
@@ -156,17 +160,84 @@ date_compute_tile_size(const Config *cfg)
 
 	if (verbose >= 2)
 		printf("[DATE] computed tile width: %d px  "
-			   "(date_w=%.1f time_w=%.1f)\n",
-			w, de.width, te.width);
+			   "(date_adv=%.1f time_adv=%.1f)\n",
+			w, d_full, t_full);
 
 	return w;
 }
 
 // ---------------------------------------------------------------------------
+// draw_tile_background
+//
+// Draws a background rounded rect respecting corner_flags:
+//   TILE_ROUND_LEFT  (bit 0) — round the two left  corners
+//   TILE_ROUND_RIGHT (bit 1) — round the two right corners
+// Unrounded corners are drawn as right angles, so adjacent tiles with
+// backgrounds form a single visual pill.
+// ---------------------------------------------------------------------------
+static void
+draw_tile_background(cairo_t *cr, int width, int height, unsigned int bg_color,
+	int corner_flags)
+{
+	if (!bg_color)
+		return;
+
+	double bg_a = ((bg_color >> 24) & 0xFF) / 255.0;
+	double bg_r = ((bg_color >> 16) & 0xFF) / 255.0;
+	double bg_g = ((bg_color >> 8) & 0xFF) / 255.0;
+	double bg_b = ((bg_color) & 0xFF) / 255.0;
+
+	double r = (width < height ? width : height) * 0.25;
+	double x0 = 0, y0 = 0, x1 = width, y1 = height;
+	int rl = (corner_flags & TILE_ROUND_LEFT);
+	int rr = (corner_flags & TILE_ROUND_RIGHT);
+
+	cairo_new_path(cr);
+
+	/* Start: top-left */
+	if (rl) {
+		/* arc from 180° to 270° (top-left corner) */
+		cairo_arc(cr, x0 + r, y0 + r, r, M_PI, 3.0 * M_PI / 2.0);
+	} else {
+		cairo_move_to(cr, x0, y0);
+	}
+
+	/* Top edge → top-right */
+	if (rr) {
+		cairo_line_to(cr, x1 - r, y0);
+		cairo_arc(cr, x1 - r, y0 + r, r, 3.0 * M_PI / 2.0, 2.0 * M_PI);
+	} else {
+		cairo_line_to(cr, x1, y0);
+	}
+
+	/* Right edge → bottom-right */
+	if (rr) {
+		cairo_line_to(cr, x1, y1 - r);
+		cairo_arc(cr, x1 - r, y1 - r, r, 0, M_PI / 2.0);
+	} else {
+		cairo_line_to(cr, x1, y1);
+	}
+
+	/* Bottom edge → bottom-left */
+	if (rl) {
+		cairo_line_to(cr, x0 + r, y1);
+		cairo_arc(cr, x0 + r, y1 - r, r, M_PI / 2.0, M_PI);
+	} else {
+		cairo_line_to(cr, x0, y1);
+	}
+
+	/* Left edge back to start */
+	cairo_close_path(cr);
+
+	cairo_set_source_rgba(cr, bg_r, bg_g, bg_b, bg_a);
+	cairo_fill(cr);
+}
+// ---------------------------------------------------------------------------
 // date_draw_tile
 // ---------------------------------------------------------------------------
 void
-date_draw_tile(uint32_t *data, int width, int height, const Config *cfg)
+date_draw_tile(uint32_t *data, int width, int height, const Config *cfg,
+	int corner_flags)
 {
 	if (!data || width <= 0 || height <= 0)
 		return;
@@ -225,29 +296,10 @@ date_draw_tile(uint32_t *data, int width, int height, const Config *cfg)
 	cairo_set_source_rgba(cr, 0, 0, 0, 0);
 	cairo_paint(cr);
 
-	// Paint the background if one is configured (alpha > 0)
-	if (cfg && cfg->date_bg_color) {
-		unsigned int bg = cfg->date_bg_color;
-		double bg_a = ((bg >> 24) & 0xFF) / 255.0;
-		double bg_r = ((bg >> 16) & 0xFF) / 255.0;
-		double bg_g = ((bg >> 8) & 0xFF) / 255.0;
-		double bg_b = ((bg) & 0xFF) / 255.0;
-
-		// Rounded rectangle: corner radius = 25 % of the shorter dimension
-		double r = (width < height ? width : height) * 0.25;
-		double x0 = 0, y0 = 0;
-		double x1 = width, y1 = height;
-
-		cairo_new_path(cr);
-		cairo_arc(cr, x0 + r, y0 + r, r, M_PI, 3 * M_PI / 2);
-		cairo_arc(cr, x1 - r, y0 + r, r, 3 * M_PI / 2, 2 * M_PI);
-		cairo_arc(cr, x1 - r, y1 - r, r, 0, M_PI / 2);
-		cairo_arc(cr, x0 + r, y1 - r, r, M_PI / 2, M_PI);
-		cairo_close_path(cr);
-
-		cairo_set_source_rgba(cr, bg_r, bg_g, bg_b, bg_a);
-		cairo_fill(cr);
-	}
+	// Paint background (corner rounding driven by corner_flags)
+	if (cfg && cfg->date_bg_color)
+		draw_tile_background(cr, width, height, cfg->date_bg_color,
+			corner_flags);
 
 	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 

@@ -148,13 +148,23 @@ typedef struct {
 	int net_tile_width;		   // computed tile width (set after load)
 
 	// ---------------------------------------------------------------------------
+	// CPU / RAM usage widget (sysinfo)
+	// ---------------------------------------------------------------------------
+	int show_sysinfo;				// 1 = show widget, 0 = disabled
+	unsigned int sysinfo_cpu_color; // ARGB color for the CPU line
+	unsigned int sysinfo_ram_color; // ARGB color for the RAM line
+	int sysinfo_font_size;			// font size in pt (0 = use default)
+	unsigned int sysinfo_bg_color;	// ARGB tile background (0 = transparent)
+	int sysinfo_tile_width;			// computed tile width (set after load)
+
+	// ---------------------------------------------------------------------------
 	// Widget ordering
 	//
-	// widget_order[0..3] stores the four slot IDs in their on-bar order.
-	// IDs: 0 = net, 1 = volume, 2 = date, 3 = apps.
-	// Default order: net(0), apps(3), volume(1), date(2).
+	// widget_order[0..4] stores the five slot IDs in their on-bar order.
+	// IDs: 0 = net, 1 = volume, 2 = date, 3 = apps, 4 = sysinfo.
+	// Default order: net(0), sysinfo(4), apps(3), volume(1), date(2).
 	// ---------------------------------------------------------------------------
-	int widget_order[4]; // bar order of widgets + apps block
+	int widget_order[5]; // bar order of widgets + apps block
 } Config;
 
 // List all valid applications from /usr/share/applications/*.desktop
@@ -214,5 +224,12 @@ int write_default_config(DesktopEntry **entries, int count);
 //   0 if successful (config was created)
 //   1 if unable to proceed (no apps found or couldn't create config)
 int init_config(void);
+
+// ---------------------------------------------------------------------------
+// Tile background corner-rounding flags (used by all widget draw_tile fns)
+// ---------------------------------------------------------------------------
+#define TILE_ROUND_LEFT 0x1
+#define TILE_ROUND_RIGHT 0x2
+#define TILE_ROUND_ALL (TILE_ROUND_LEFT | TILE_ROUND_RIGHT)
 
 #endif // CONFIG_H

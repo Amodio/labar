@@ -50,8 +50,6 @@ local_find_best_icon(const char *icon_name)
 
 	/* Search /usr/share/icons (2 levels: theme / size-dir / apps/) */
 	const char *base = "/usr/share/icons";
-	if (verbose >= 4)
-		fprintf(stderr, "[I/O] OPENDIR: %s\n", base);
 	DIR *bd = opendir(base);
 	if (!bd)
 		goto pixmaps;
@@ -66,8 +64,6 @@ local_find_best_icon(const char *icon_name)
 		char *tpath = NULL;
 		if (asprintf(&tpath, "%s/%s", base, theme->d_name) < 0)
 			continue;
-		if (verbose >= 4)
-			fprintf(stderr, "[I/O] OPENDIR: %s\n", tpath);
 		DIR *td = opendir(tpath);
 		if (!td) {
 			free(tpath);
@@ -84,8 +80,6 @@ local_find_best_icon(const char *icon_name)
 				if (asprintf(&spath, "%s/%s/apps/%s.%s", tpath, sz->d_name,
 						icon_name, exts[e]) < 0)
 					continue;
-				if (verbose >= 4)
-					fprintf(stderr, "[I/O] ACCESS: %s\n", spath);
 				if (access(spath, F_OK) == 0) {
 					int sz_val = (e == 0) ? 9999 : 0;
 					sscanf(sz->d_name, "%dx%d", &sz_val, &sz_val);
@@ -101,13 +95,9 @@ local_find_best_icon(const char *icon_name)
 				}
 			}
 		}
-		if (verbose >= 4)
-			fprintf(stderr, "[I/O] CLOSEDIR: %s\n", tpath);
 		closedir(td);
 		free(tpath);
 	}
-	if (verbose >= 4)
-		fprintf(stderr, "[I/O] CLOSEDIR: %s\n", base);
 	closedir(bd);
 	if (best)
 		return best;
@@ -119,8 +109,6 @@ pixmaps:;
 		char *p = NULL;
 		if (asprintf(&p, "/usr/share/pixmaps/%s.%s", icon_name, exts2[e]) < 0)
 			continue;
-		if (verbose >= 4)
-			fprintf(stderr, "[I/O] ACCESS: %s\n", p);
 		if (access(p, F_OK) == 0)
 			return p;
 		free(p);
@@ -199,8 +187,6 @@ local_find_all_icons(const char *icon_name)
 	} while (0)
 
 	const char *base_dir = "/usr/share/icons";
-	if (verbose >= 4)
-		fprintf(stderr, "[I/O] OPENDIR: %s\n", base_dir);
 	DIR *bd = opendir(base_dir);
 	if (bd) {
 		struct dirent *theme;
@@ -210,8 +196,6 @@ local_find_all_icons(const char *icon_name)
 			char *tpath = NULL;
 			if (asprintf(&tpath, "%s/%s", base_dir, theme->d_name) < 0)
 				continue;
-			if (verbose >= 4)
-				fprintf(stderr, "[I/O] OPENDIR: %s\n", tpath);
 			DIR *td = opendir(tpath);
 			if (!td) {
 				free(tpath);
@@ -231,8 +215,6 @@ local_find_all_icons(const char *icon_name)
 					if (asprintf(&spath, "%s/%s/apps/%s.%s", tpath, szd->d_name,
 							icon_name, exts[e]) < 0)
 						continue;
-					if (verbose >= 4)
-						fprintf(stderr, "[I/O] ACCESS: %s\n", spath);
 					if (access(spath, F_OK) != 0) {
 						free(spath);
 						continue;
@@ -242,13 +224,9 @@ local_find_all_icons(const char *icon_name)
 					APPEND_ICON(spath, sv);
 				}
 			}
-			if (verbose >= 4)
-				fprintf(stderr, "[I/O] CLOSEDIR: %s\n", tpath);
 			closedir(td);
 			free(tpath);
 		}
-		if (verbose >= 4)
-			fprintf(stderr, "[I/O] CLOSEDIR: %s\n", base_dir);
 		closedir(bd);
 	}
 done_scan:;
@@ -261,8 +239,6 @@ done_scan:;
 			if (asprintf(&p, "/usr/share/pixmaps/%s.%s", icon_name, exts2[e]) <
 				0)
 				continue;
-			if (verbose >= 4)
-				fprintf(stderr, "[I/O] ACCESS: %s\n", p);
 			if (access(p, F_OK) == 0) {
 				int sv = (e == 1) ? 9999 : 0;
 				APPEND_ICON(p, sv);
@@ -337,6 +313,7 @@ struct _CfgWin {
 	GtkCheckButton *show_volume_check;
 	GtkCheckButton *show_date_check;
 	GtkCheckButton *show_net_check;
+	GtkCheckButton *show_sysinfo_check;
 	GtkEntry *date_date_format_entry;
 	GtkColorDialogButton *date_date_color_btn;
 	GtkSpinButton *date_date_size_spin;
@@ -349,6 +326,10 @@ struct _CfgWin {
 	GtkColorDialogButton *net_tx_color_btn;
 	GtkSpinButton *net_size_spin;
 	GtkColorDialogButton *net_bg_color_btn;
+	GtkColorDialogButton *sysinfo_cpu_color_btn;
+	GtkColorDialogButton *sysinfo_ram_color_btn;
+	GtkSpinButton *sysinfo_size_spin;
+	GtkColorDialogButton *sysinfo_bg_color_btn;
 
 	/* Apps */
 	GtkBox *apps_box;
@@ -568,15 +549,11 @@ write_config(CfgWin *w)
 	char path[512];
 	snprintf(path, sizeof(path), "%s/.config/labar.cfg", home);
 
-	if (verbose)
-		fprintf(stderr, "[config-window] writing config to %s\n", path);
 	FILE *fp = fopen(path, "w");
 	if (!fp) {
 		perror("fopen");
 		return -1;
 	}
-	if (verbose >= 3)
-		fprintf(stderr, "[I/O] FOPEN (write): %s\n", path);
 
 	Config *c = &w->cfg;
 
@@ -596,6 +573,8 @@ write_config(CfgWin *w)
 	c->show_volume = gtk_check_button_get_active(w->show_volume_check);
 	c->show_date = gtk_check_button_get_active(w->show_date_check);
 	c->show_net = gtk_check_button_get_active(w->show_net_check);
+	if (w->show_sysinfo_check)
+		c->show_sysinfo = gtk_check_button_get_active(w->show_sysinfo_check);
 
 	/* Net widget fields */
 	const char *niface =
@@ -606,6 +585,17 @@ write_config(CfgWin *w)
 	c->net_tx_color = read_color_btn(w->net_tx_color_btn);
 	c->net_font_size = (int)gtk_spin_button_get_value(w->net_size_spin);
 	c->net_bg_color = read_color_btn(w->net_bg_color_btn);
+
+	/* Sysinfo widget fields */
+	if (w->sysinfo_cpu_color_btn)
+		c->sysinfo_cpu_color = read_color_btn(w->sysinfo_cpu_color_btn);
+	if (w->sysinfo_ram_color_btn)
+		c->sysinfo_ram_color = read_color_btn(w->sysinfo_ram_color_btn);
+	if (w->sysinfo_size_spin)
+		c->sysinfo_font_size =
+			(int)gtk_spin_button_get_value(w->sysinfo_size_spin);
+	if (w->sysinfo_bg_color_btn)
+		c->sysinfo_bg_color = read_color_btn(w->sysinfo_bg_color_btn);
 
 	char *ddf =
 		strdup(gtk_editable_get_text(GTK_EDITABLE(w->date_date_format_entry)));
@@ -667,23 +657,26 @@ write_config(CfgWin *w)
 	fprintf(fp, "#   overlay:          on top of everything\n");
 	fprintf(fp, "layer=%s\n",
 		(unsigned)c->layer < 4 ? lay_str[c->layer] : "top");
-	fprintf(fp, "# show-net: show the network speed widget (first slot)\n");
+	fprintf(fp, "# show-net: show the network speed widget\n");
 	fprintf(fp, "show-net=%s\n", c->show_net ? "true" : "false");
+	fprintf(fp, "# show-sysinfo: show the CPU/RAM usage widget\n");
+	fprintf(fp, "show-sysinfo=%s\n", c->show_sysinfo ? "true" : "false");
 	fprintf(fp, "# show-volume: show the volume widget (after apps)\n");
 	fprintf(fp, "show-volume=%s\n", c->show_volume ? "true" : "false");
 	fprintf(fp, "# show-date: show the date/time widget (last slot)\n");
 	fprintf(fp, "show-date=%s\n", c->show_date ? "true" : "false");
 	fprintf(fp, "# widget-order: bar order of widgets and app icons\n");
 	{
-		static const char *wnames[4] = {"net", "volume", "date", "apps"};
-		fprintf(fp, "widget-order=%s,%s,%s,%s\n", wnames[c->widget_order[0]],
+		static const char *wnames[5] = {
+			"net", "volume", "date", "apps", "sysinfo"};
+		fprintf(fp, "widget-order=%s,%s,%s,%s,%s\n", wnames[c->widget_order[0]],
 			wnames[c->widget_order[1]], wnames[c->widget_order[2]],
-			wnames[c->widget_order[3]]);
+			wnames[c->widget_order[3]], wnames[c->widget_order[4]]);
 	}
 
-	/* Walk widget_order[4] in order, emitting each section.
+	/* Walk widget_order[5] in order, emitting each section.
 	 * WIDGET_ID_APPS (3) triggers the [apps] block. */
-	static const char *wnames[4] = {"net", "volume", "date", "apps"};
+	static const char *wnames[5] = {"net", "volume", "date", "apps", "sysinfo"};
 
 #define EMIT_WIDGET_SECTION(wid)                                               \
 	do {                                                                       \
@@ -777,21 +770,34 @@ write_config(CfgWin *w)
 				}                                                              \
 				_ch = gtk_widget_get_next_sibling(_ch);                        \
 			}                                                                  \
+		} /* volume (wid==1) has no section of its own */ /* sysinfo (wid==4)  \
+														   */                  \
+		else if ((wid) == 4) {                                                 \
+			fprintf(fp, "\n[widget-sysinfo]\n");                               \
+			fprintf(fp, "# cpu-color: color for the CPU usage line\n");        \
+			fprint_color(fp, "cpu-color",                                      \
+				c->sysinfo_cpu_color ? c->sysinfo_cpu_color : 0xFFFFEB3B);     \
+			fprintf(fp, "# ram-color: color for the RAM usage line\n");        \
+			fprint_color(fp, "ram-color",                                      \
+				c->sysinfo_ram_color ? c->sysinfo_ram_color : 0xFF66BB6A);     \
+			fprintf(fp, "# size: font size in pt\n");                          \
+			fprintf(fp, "size=%d\n",                                           \
+				c->sysinfo_font_size > 0 ? c->sysinfo_font_size : 14);         \
+			fprintf(fp, "# bg-color: tile background color (#RRGGBBAA)\n");    \
+			fprintf(fp, "#   #00000094 = black 42%% transparent (default)\n"); \
+			fprintf(fp, "#   #00000000 = fully transparent\n");                \
+			fprint_color(fp, "bg-color",                                       \
+				c->sysinfo_bg_color ? c->sysinfo_bg_color : 0x94000000);       \
 		}                                                                      \
-		/* volume (wid==1) has no section of its own */                        \
 	} while (0)
 
-	for (int _i = 0; _i < 4; _i++)
+	for (int _i = 0; _i < 5; _i++)
 		EMIT_WIDGET_SECTION(c->widget_order[_i]);
 
 #undef EMIT_WIDGET_SECTION
 	(void)wnames;
 
-	if (verbose >= 3)
-		fprintf(stderr, "[I/O] FCLOSE: %s\n", path);
 	fclose(fp);
-	if (verbose)
-		fprintf(stderr, "[config-window] config written successfully\n");
 	return 0;
 }
 
@@ -1179,6 +1185,18 @@ harvest_widget_fields(CfgWin *w)
 		w->cfg.net_font_size = (int)gtk_spin_button_get_value(w->net_size_spin);
 	if (w->net_bg_color_btn)
 		w->cfg.net_bg_color = read_color_btn(w->net_bg_color_btn);
+	if (w->show_sysinfo_check)
+		w->cfg.show_sysinfo =
+			gtk_check_button_get_active(w->show_sysinfo_check);
+	if (w->sysinfo_cpu_color_btn)
+		w->cfg.sysinfo_cpu_color = read_color_btn(w->sysinfo_cpu_color_btn);
+	if (w->sysinfo_ram_color_btn)
+		w->cfg.sysinfo_ram_color = read_color_btn(w->sysinfo_ram_color_btn);
+	if (w->sysinfo_size_spin)
+		w->cfg.sysinfo_font_size =
+			(int)gtk_spin_button_get_value(w->sysinfo_size_spin);
+	if (w->sysinfo_bg_color_btn)
+		w->cfg.sysinfo_bg_color = read_color_btn(w->sysinfo_bg_color_btn);
 }
 
 static void
@@ -1203,7 +1221,7 @@ on_widget_move_down(GtkButton *btn, gpointer data)
 	(void)btn;
 	CfgWin *w = (CfgWin *)data;
 	int pos = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(btn), "widget_pos"));
-	if (pos >= 3)
+	if (pos >= 4)
 		return;
 	harvest_widget_fields(w);
 	int tmp = w->cfg.widget_order[pos + 1];
@@ -1230,15 +1248,7 @@ static GtkWidget *
 make_widget_row(CfgWin *w, int pos)
 {
 	int wid = w->cfg.widget_order[pos];
-	int total = 4;
-
-	if (verbose >= 2) {
-		fprintf(stderr,
-			"[config-window] make_widget_row: pos=%d wid=%d "
-			"color_dialog=%p\n",
-			pos, wid, (void *)w->color_dialog);
-		fflush(stderr);
-	}
+	int total = 5;
 
 	/* Outer frame */
 	GtkWidget *frame = gtk_frame_new(NULL);
@@ -1280,6 +1290,10 @@ make_widget_row(CfgWin *w, int pos)
 	case 3:
 		label_text = "App icons";
 		show_val = 1;
+		break;
+	case 4:
+		label_text = "CPU/RAM usage";
+		show_val = w->cfg.show_sysinfo;
 		break;
 	}
 
@@ -1343,8 +1357,6 @@ make_widget_row(CfgWin *w, int pos)
 		store_signal_pair(frame, G_OBJECT(w->net_iface_entry),
 			connect_mark_unsaved(GTK_WIDGET(w->net_iface_entry), w));
 
-		if (verbose >= 2)
-			fprintf(stderr, "[config-window]   net: making rx_color_btn\n");
 		w->net_rx_color_btn = make_color_btn(w->color_dialog,
 			w->cfg.net_rx_color ? w->cfg.net_rx_color : 0xFFFF3FFA);
 		grid_row(GTK_GRID(sg), r++,
@@ -1352,8 +1364,6 @@ make_widget_row(CfgWin *w, int pos)
 		store_signal_pair(frame, G_OBJECT(w->net_rx_color_btn),
 			connect_mark_unsaved(GTK_WIDGET(w->net_rx_color_btn), w));
 
-		if (verbose >= 2)
-			fprintf(stderr, "[config-window]   net: making tx_color_btn\n");
 		w->net_tx_color_btn = make_color_btn(w->color_dialog,
 			w->cfg.net_tx_color ? w->cfg.net_tx_color : 0xFF3AFFFD);
 		grid_row(GTK_GRID(sg), r++,
@@ -1361,8 +1371,6 @@ make_widget_row(CfgWin *w, int pos)
 		store_signal_pair(frame, G_OBJECT(w->net_tx_color_btn),
 			connect_mark_unsaved(GTK_WIDGET(w->net_tx_color_btn), w));
 
-		if (verbose >= 2)
-			fprintf(stderr, "[config-window]   net: making size_spin\n");
 		w->net_size_spin = make_spin(4, 128,
 			w->cfg.net_font_size > 0 ? w->cfg.net_font_size : 14);
 		grid_row(GTK_GRID(sg), r++,
@@ -1370,16 +1378,12 @@ make_widget_row(CfgWin *w, int pos)
 		store_signal_pair(frame, G_OBJECT(w->net_size_spin),
 			connect_mark_unsaved(GTK_WIDGET(w->net_size_spin), w));
 
-		if (verbose >= 2)
-			fprintf(stderr, "[config-window]   net: making bg_color_btn\n");
 		w->net_bg_color_btn = make_color_btn(w->color_dialog,
 			w->cfg.net_bg_color ? w->cfg.net_bg_color : 0x94000000);
 		grid_row(GTK_GRID(sg), r++,
 			"Tile background:", GTK_WIDGET(w->net_bg_color_btn));
 		store_signal_pair(frame, G_OBJECT(w->net_bg_color_btn),
 			connect_mark_unsaved(GTK_WIDGET(w->net_bg_color_btn), w));
-		if (verbose >= 2)
-			fprintf(stderr, "[config-window]   net: done\n");
 		break;
 	}
 	case 1: /* Volume — no sub-settings */
@@ -1388,6 +1392,38 @@ make_widget_row(CfgWin *w, int pos)
 	case 3: /* Apps — no sub-settings; checkbox is non-interactive */
 		gtk_widget_set_sensitive(GTK_WIDGET(cb), FALSE);
 		break;
+	case 4: { /* Sysinfo */
+		w->show_sysinfo_check = cb;
+
+		w->sysinfo_cpu_color_btn = make_color_btn(w->color_dialog,
+			w->cfg.sysinfo_cpu_color ? w->cfg.sysinfo_cpu_color : 0xFFFFEB3B);
+		grid_row(GTK_GRID(sg), r++,
+			"CPU color:", GTK_WIDGET(w->sysinfo_cpu_color_btn));
+		store_signal_pair(frame, G_OBJECT(w->sysinfo_cpu_color_btn),
+			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_cpu_color_btn), w));
+
+		w->sysinfo_ram_color_btn = make_color_btn(w->color_dialog,
+			w->cfg.sysinfo_ram_color ? w->cfg.sysinfo_ram_color : 0xFF66BB6A);
+		grid_row(GTK_GRID(sg), r++,
+			"RAM color:", GTK_WIDGET(w->sysinfo_ram_color_btn));
+		store_signal_pair(frame, G_OBJECT(w->sysinfo_ram_color_btn),
+			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_ram_color_btn), w));
+
+		w->sysinfo_size_spin = make_spin(4, 128,
+			w->cfg.sysinfo_font_size > 0 ? w->cfg.sysinfo_font_size : 14);
+		grid_row(GTK_GRID(sg), r++,
+			"Font size (pt):", GTK_WIDGET(w->sysinfo_size_spin));
+		store_signal_pair(frame, G_OBJECT(w->sysinfo_size_spin),
+			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_size_spin), w));
+
+		w->sysinfo_bg_color_btn = make_color_btn(w->color_dialog,
+			w->cfg.sysinfo_bg_color ? w->cfg.sysinfo_bg_color : 0x94000000);
+		grid_row(GTK_GRID(sg), r++,
+			"Tile background:", GTK_WIDGET(w->sysinfo_bg_color_btn));
+		store_signal_pair(frame, G_OBJECT(w->sysinfo_bg_color_btn),
+			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_bg_color_btn), w));
+		break;
+	}
 	case 2: { /* Date */
 		w->show_date_check = cb;
 
@@ -1457,59 +1493,35 @@ refresh_widgets_list(CfgWin *w)
 		gtk_widget_get_first_child(GTK_WIDGET(w->widgets_box)) == NULL;
 
 	if (is_empty) {
-		/* Initial population — no existing rows to reorder, just build */
-		if (verbose >= 2)
-			fprintf(stderr,
-				"[config-window] refresh_widgets_list: initial build\n");
-		for (int i = 0; i < 4; i++)
+		/* Initial population — build the 5 rows in widget_order sequence */
+		for (int i = 0; i < 5; i++)
 			gtk_box_append(w->widgets_box, make_widget_row(w, i));
-		if (verbose >= 2)
-			fprintf(stderr, "[config-window] refresh_widgets_list: done\n");
 		return;
 	}
 
-	if (verbose >= 2)
-		fprintf(stderr, "[config-window] refresh_widgets_list: reordering\n");
-
-	/* Collect the three row widgets into an array indexed by widget ID */
-	GtkWidget *rows[4] = {NULL, NULL, NULL, NULL};
+	/* Collect the existing row frames into an array indexed by widget ID */
+	GtkWidget *rows[5] = {NULL, NULL, NULL, NULL, NULL};
 	GtkWidget *child = gtk_widget_get_first_child(GTK_WIDGET(w->widgets_box));
 	while (child) {
 		int wid =
 			GPOINTER_TO_INT(g_object_get_data(G_OBJECT(child), "widget_id")) -
 			1;
-		if (verbose >= 2)
-			fprintf(stderr, "[config-window]   found row %p wid=%d\n",
-				(void *)child, wid);
-		if (wid >= 0 && wid < 4)
+		if (wid >= 0 && wid < 5)
 			rows[wid] = child;
 		child = gtk_widget_get_next_sibling(child);
 	}
-	if (verbose >= 2)
-		fprintf(stderr, "[config-window]   rows: [0]=%p [1]=%p [2]=%p [3]=%p\n",
-			(void *)rows[0], (void *)rows[1], (void *)rows[2], (void *)rows[3]);
 
-	/* Re-insert in widget_order sequence.
-	 * We work from last-desired to first-desired, always inserting at front,
-	 * to achieve the right final order. */
-	for (int i = 3; i >= 0; i--) {
+	/* Re-insert in widget_order sequence (last-to-first prepend) */
+	for (int i = 4; i >= 0; i--) {
 		int wid = w->cfg.widget_order[i];
 		GtkWidget *row = rows[wid];
-		if (verbose >= 2)
-			fprintf(stderr, "[config-window]   reorder i=%d wid=%d row=%p\n", i,
-				wid, (void *)row);
 		if (!row)
 			continue;
 
-		/* Re-ref the widget, remove it, then re-add at the front */
 		g_object_ref(row);
 		gtk_box_remove(w->widgets_box, row);
 		gtk_box_prepend(w->widgets_box, row);
 		g_object_unref(row);
-
-		if (verbose >= 2)
-			fprintf(stderr, "[config-window]   placed wid=%d at position %d\n",
-				wid, i);
 	}
 
 	/* Update the Up/Down button sensitivity and widget_pos to match new
@@ -1524,15 +1536,12 @@ refresh_widgets_list(CfgWin *w)
 			g_object_set_data(G_OBJECT(up), "widget_pos", GINT_TO_POINTER(pos));
 		}
 		if (dn) {
-			gtk_widget_set_sensitive(dn, pos < 3);
+			gtk_widget_set_sensitive(dn, pos < 4);
 			g_object_set_data(G_OBJECT(dn), "widget_pos", GINT_TO_POINTER(pos));
 		}
 		child = gtk_widget_get_next_sibling(child);
 		pos++;
 	}
-
-	if (verbose >= 2)
-		fprintf(stderr, "[config-window] refresh_widgets_list: done\n");
 }
 
 /* Both the Close button and the window's own × button route through here,
@@ -1624,8 +1633,6 @@ on_icon_entry_changed(GtkEditable *editable, gpointer user_data)
 		return;
 	const char *path = gtk_editable_get_text(editable);
 	if (path && path[0]) {
-		if (verbose >= 3)
-			fprintf(stderr, "[I/O] FOPEN (read): %s\n", path);
 		GdkTexture *tex = gdk_texture_new_from_filename(path, NULL);
 		if (tex) {
 			gtk_image_set_from_paintable(GTK_IMAGE(preview),
@@ -1725,8 +1732,6 @@ make_app_row(CfgWin *w, int idx)
 		gtk_image_set_pixel_size(GTK_IMAGE(preview), 32);
 		gtk_widget_set_size_request(preview, 36, 36);
 		if (app->icon && app->icon[0]) {
-			if (verbose >= 3)
-				fprintf(stderr, "[I/O] FOPEN (read): %s\n", app->icon);
 			GdkTexture *tex = gdk_texture_new_from_filename(app->icon, NULL);
 			if (tex) {
 				gtk_image_set_from_paintable(GTK_IMAGE(preview),

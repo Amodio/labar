@@ -3,7 +3,7 @@ labar(1)
 # NAME
 
 labar - A Wayland layer-shell application bar with icons, a volume widget,
-		a network speed widget, and a date/time widget.
+a network speed widget, a CPU/RAM usage widget, and a date/time widget
 
 # SYNOPSIS
 
@@ -12,8 +12,8 @@ labar - A Wayland layer-shell application bar with icons, a volume widget,
 # DESCRIPTION
 
 *labar* is a minimal Wayland layer-shell bar that displays application icons
-and optional widgets (volume, network speed, date/time). It renders on any
-edge of the screen (top, bottom, left, or right) using the
+and optional widgets (volume, network speed, CPU/RAM usage, date/time). It
+renders on any edge of the screen (top, bottom, left, or right) using the
 *zwlr-layer-shell-v1* protocol.
 Icons are rendered from SVG or PNG files; the bar reacts to mouse clicks,
 right-clicks, and scroll events. HiDPI displays are supported via
@@ -50,15 +50,16 @@ exist, *labar* generates a default one on first run.
 
 	*-vvvv*
 		Level 4 — high-frequency events: raw pointer motion
-		coordinates on every mouse move, net tile render details,
-		per-second speed samples. Use only for input debugging;
+		coordinates on every mouse move, net and sysinfo tile render
+		details, per-second samples. Use only for input debugging;
 		output is very noisy.
 
 *-c, --config*
 	Open the graphical configuration editor (requires GTK4). The editor
 	lets you inspect and modify all settings interactively and save them
 	back to *~/.config/labar.cfg* without editing the file by hand.
-	Widgets can be reordered using the *▲ Up* / *▼ Down* buttons.
+	Widgets and the app-icon block can be reordered using the
+	*▲ Up* / *▼ Down* buttons.
 	Available only when *labar* is built with *-DHAVE_GTK4=1*.
 
 *-V, --version*
@@ -67,9 +68,10 @@ exist, *labar* generates a default one on first run.
 # CONFIGURATION
 
 *~/.config/labar.cfg* uses an INI-style format with a *[global]* section,
-optional *[widget-net]* and *[widget-date]* sections, and an *[apps]* section.
-The bar renders slots in the order: net widget → app icons → volume widget →
-date/time widget.
+optional widget sections (*[widget-sysinfo]*, *[widget-net]*, *[widget-date]*),
+and an *[apps]* section. The bar order is fully configurable via
+*widget-order*; the default is: CPU/RAM widget → net widget → app icons →
+volume widget → date/time widget.
 
 ## [global] keys
 
@@ -109,29 +111,50 @@ date/time widget.
 *layer=*_background_|_bottom_|_top_|_overlay_
 	Wayland layer-shell layer. Default: *top* (above normal windows).
 
-*show-volume=*_true_|_false_
-	Append a volume icon slot after the app icons. The slot shows the
-	current ALSA PCM level; left-click toggles mute, right-click opens
-	*alsamixer* in a terminal, and scroll adjusts the volume.
-	Default: *true*.
-
-*show-date=*_true_|_false_
-	Append a date/time text slot at the end of the bar. The slot
-	renders two lines of text using Cairo; no icon file is required.
-	Settings live in the *[widget-date]* section. Default: *true*.
+*show-sysinfo=*_true_|_false_
+	Show a CPU/RAM usage text slot. The slot renders two lines read from
+	*/proc/stat* (CPU idle-time delta) and */proc/meminfo*
+	(MemTotal − MemAvailable). Settings live in the *[widget-sysinfo]*
+	section. Default: *true*.
 
 *show-net=*_true_|_false_
-	Append a network speed text slot at the beginning of the bar (before
-	app icons). The slot renders two lines showing the current receive
-	and transmit speeds read from */proc/net/dev*. Settings live in the
-	*[widget-net]* section. Default: *true*.
+	Show a network speed text slot. The slot renders two lines showing
+	the current receive and transmit speeds read from */proc/net/dev*.
+	Settings live in the *[widget-net]* section. Default: *true*.
 
-*widget-order=*_WIDGET_,_WIDGET_,_WIDGET_,_WIDGET_
-	Bar order of the three widgets and the app-icon block as a
-	comma-separated list of four names: *net*, *volume*, *date*, *apps*.
-	Entries listed before *apps* appear to the left of the app icons;
-	entries listed after *apps* appear to the right.
-	Default: *net,apps,volume,date*.
+*show-volume=*_true_|_false_
+	Show a volume icon slot. The slot displays the current ALSA PCM
+	level; left-click toggles mute, right-click opens *alsamixer* in a
+	terminal, and scroll adjusts the volume. Default: *true*.
+
+*show-date=*_true_|_false_
+	Show a date/time text slot. The slot renders two lines of text using
+	Cairo; no icon file is required. Settings live in the
+	*[widget-date]* section. Default: *true*.
+
+*widget-order=*_WIDGET_,_WIDGET_,_WIDGET_,_WIDGET_,_WIDGET_
+	Bar order of the four widgets and the app-icon block as a
+	comma-separated list of five names: *sysinfo*, *net*, *volume*,
+	*date*, *apps*. Entries listed before *apps* appear to the left of
+	the app icons; entries listed after *apps* appear to the right.
+	Default: *sysinfo,net,apps,volume,date*.
+
+## [widget-sysinfo] keys
+
+*cpu-color=*_#RRGGBB_|_#RRGGBBAA_
+	Color of the CPU usage line (e.g. *CPU  42%*).
+	Default: *#FFEB3B* (yellow).
+
+*ram-color=*_#RRGGBB_|_#RRGGBBAA_
+	Color of the RAM usage line (e.g. *RAM  61%*).
+	Default: *#66BB6A* (green).
+
+*size=*_N_
+	Font size in points for both usage lines. Default: *14*.
+
+*bg-color=*_#RRGGBBAA_
+	Background fill color for the tile. Default: *#00000094* (black,
+	42% transparent).
 
 ## [widget-net] keys
 
@@ -183,6 +206,14 @@ date/time widget.
 	*#00000000* is fully transparent. Default: *#00000094* (black,
 	42% transparent).
 
+## Background pill grouping
+
+When two or more adjacent slots all have a non-transparent *bg-color*,
+*labar* merges their backgrounds into a single rounded pill: inner shared
+edges are drawn as straight lines and the spacing gap between tiles is filled
+with the same colour. Only the outer edges of the group receive rounded
+corners.
+
 ## [apps] keys
 
 Each application is defined by a consecutive block of keys inside an
@@ -216,10 +247,17 @@ label-offset=10
 label-size=10
 position=bottom
 layer=top
+show-sysinfo=true
+show-net=true
 show-volume=true
 show-date=true
-show-net=true
-widget-order=net,apps,volume,date
+widget-order=sysinfo,net,apps,volume,date
+
+[widget-sysinfo]
+cpu-color=#FFEB3B
+ram-color=#66BB6A
+size=14
+bg-color=#00000094
 
 [widget-net]
 # iface=eth0
@@ -287,6 +325,9 @@ moves to a different monitor via *wl_surface.enter*.
 	Right-click opens *alsamixer* in a terminal.
 	Scroll up/down adjusts PCM volume by 4%.
 
+*CPU/RAM usage slot* (when *show-sysinfo=true*)
+	Display-only; no mouse bindings.
+
 *Network speed slot* (when *show-net=true*)
 	Display-only; no mouse bindings.
 
@@ -318,6 +359,11 @@ moves to a different monitor via *wl_surface.enter*.
 Run with default settings:
 ```
 labar
+```
+
+Open the graphical configuration editor:
+```
+labar -c
 ```
 
 Run with lifecycle logging:

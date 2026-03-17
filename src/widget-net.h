@@ -57,7 +57,8 @@ int net_compute_tile_size(const Config *cfg);
 // Render the network-speed widget into a caller-supplied ARGB8888 buffer
 // (width × height × 4 bytes).  Clears to transparent before drawing.
 // ---------------------------------------------------------------------------
-void net_draw_tile(uint32_t *data, int width, int height, const Config *cfg);
+void net_draw_tile(uint32_t *data, int width, int height, const Config *cfg,
+	int corner_flags);
 
 // ---------------------------------------------------------------------------
 // net_widget_needs_repaint
