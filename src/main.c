@@ -92,6 +92,7 @@ static struct output_info {
 	char description[128];
 	int32_t logical_x, logical_y;
 	int32_t logical_w, logical_h;
+	uint32_t registry_name; // Wayland global name for removal
 } outputs[MAX_OUTPUTS];
 static int n_outputs = 0;
 
@@ -1198,14 +1199,167 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 	wl_surface_commit(surface);
 }
 
-// Called when the compositor wants to close the layer surface (e.g. output
-// being destroyed). Clean shutdown would unmap and destroy resources here;
-// for now we just exit.
+// Forward declarations for symbols used in teardown/rebuild / layer_closed
+// that are defined later in this translation unit.
+static struct wl_output *find_output_by_name(const char *name);
+static const struct wl_surface_listener surface_listener;
+static const struct wp_fractional_scale_v1_listener fractional_scale_listener;
+static const struct zwlr_layer_surface_v1_listener layer_listener;
+static void rebuild_layer_surface(void);
+
+// Set to 1 after teardown_layer_surface() so that the next output_done event
+// triggers rebuild_layer_surface() once the output is ready.
+static int pending_layer_rebuild = 0;
+
+// ---------------------------------------------------------------------------
+// teardown_layer_surface
+//
+// Destroys the layer surface, SHM buffer, and wl_surface proxies.
+// Does NOT create new ones — call rebuild_layer_surface() once the output
+// is back and ready (signalled by output_done).
+// ---------------------------------------------------------------------------
+static void
+teardown_layer_surface(void)
+{
+	if (layer_surface) {
+		zwlr_layer_surface_v1_destroy(layer_surface);
+		layer_surface = NULL;
+	}
+	if (buffer) {
+		wl_buffer_destroy(buffer);
+		buffer = NULL;
+		pixels = NULL;
+	}
+	if (fractional_scale_obj) {
+		wp_fractional_scale_v1_destroy(fractional_scale_obj);
+		fractional_scale_obj = NULL;
+	}
+	if (viewport_obj) {
+		wp_viewport_destroy(viewport_obj);
+		viewport_obj = NULL;
+	}
+	if (surface) {
+		wl_surface_destroy(surface);
+		surface = NULL;
+	}
+	pending_layer_rebuild = 1;
+	if (verbose)
+		printf("[DBG] Layer surface torn down — waiting for output\n");
+}
+
+// ---------------------------------------------------------------------------
+// rebuild_layer_surface
+//
+// Creates a fresh wl_surface + layer_surface.  Called from output_done once
+// the output has re-announced itself after a hotplug / source change.
+// ---------------------------------------------------------------------------
+static void
+rebuild_layer_surface(void)
+{
+	pending_layer_rebuild = 0;
+	if (verbose)
+		printf("[DBG] Rebuilding layer surface\n");
+
+	surface = wl_compositor_create_surface(compositor);
+	wl_surface_add_listener(surface, &surface_listener, NULL);
+
+	if (fractional_scale_manager && viewporter) {
+		fractional_scale_obj =
+			wp_fractional_scale_manager_v1_get_fractional_scale(
+				fractional_scale_manager, surface);
+		wp_fractional_scale_v1_add_listener(fractional_scale_obj,
+			&fractional_scale_listener, NULL);
+		viewport_obj = wp_viewporter_get_viewport(viewporter, surface);
+	}
+
+	struct wl_output *target_output = NULL;
+	if (app_config.output_name && app_config.output_name[0])
+		target_output = find_output_by_name(app_config.output_name);
+
+	int total_count = get_total_widget_count();
+	int date_slot_idx = get_date_slot_index();
+	int net_slot_idx = get_net_slot_index();
+	int sysinfo_slot_idx = get_sysinfo_slot_index();
+	int icon_span = 0;
+	for (int i = 0; i < total_count; i++) {
+		if (i > 0)
+			icon_span += app_config.icon_spacing;
+		if (i == date_slot_idx && app_config.date_tile_width > 0)
+			icon_span += app_config.date_tile_width;
+		else if (i == net_slot_idx && app_config.net_tile_width > 0)
+			icon_span += app_config.net_tile_width;
+		else if (i == sysinfo_slot_idx && app_config.sysinfo_tile_width > 0)
+			icon_span += app_config.sysinfo_tile_width;
+		else
+			icon_span += app_config.icon_size;
+	}
+	int cross_size = app_config.icon_size;
+
+	uint32_t wl_layer = ZWLR_LAYER_SHELL_V1_LAYER_TOP;
+	switch (app_config.layer) {
+	case LAYER_BACKGROUND:
+		wl_layer = ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND;
+		break;
+	case LAYER_BOTTOM:
+		wl_layer = ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM;
+		break;
+	case LAYER_OVERLAY:
+		wl_layer = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY;
+		break;
+	default:
+		wl_layer = ZWLR_LAYER_SHELL_V1_LAYER_TOP;
+		break;
+	}
+
+	layer_surface = zwlr_layer_shell_v1_get_layer_surface(layer_shell, surface,
+		target_output, wl_layer, "labar");
+	zwlr_layer_surface_v1_set_layer(layer_surface, wl_layer);
+
+	uint32_t anchor;
+	int bar_width, bar_height_actual;
+	switch (app_config.position) {
+	case POSITION_TOP:
+		anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP;
+		bar_width = icon_span;
+		bar_height_actual = cross_size;
+		break;
+	case POSITION_LEFT:
+		anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT;
+		bar_width = cross_size;
+		bar_height_actual = icon_span;
+		break;
+	case POSITION_RIGHT:
+		anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
+		bar_width = cross_size;
+		bar_height_actual = icon_span;
+		break;
+	case POSITION_BOTTOM:
+	default:
+		anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
+		bar_width = icon_span;
+		bar_height_actual = cross_size;
+		break;
+	}
+
+	zwlr_layer_surface_v1_set_anchor(layer_surface, anchor);
+	zwlr_layer_surface_v1_set_size(layer_surface, bar_width, bar_height_actual);
+	zwlr_layer_surface_v1_set_exclusive_zone(layer_surface,
+		app_config.exclusive_zone);
+	zwlr_layer_surface_v1_add_listener(layer_surface, &layer_listener, NULL);
+	wl_surface_commit(surface);
+}
+
+// Called when the compositor explicitly closes the layer surface (output
+// removed).  Tear down and wait for the output to come back.
 static void
 layer_closed(void *data, struct zwlr_layer_surface_v1 *surf)
 {
-	fprintf(stderr, "Layer surface closed by compositor — exiting\n");
-	exit(0);
+	if (verbose)
+		printf("[DBG] Layer surface closed by compositor\n");
+	// registry_remove may have already called teardown_layer_surface();
+	// if so, pending_layer_rebuild is already set — nothing more to do.
+	if (!pending_layer_rebuild)
+		teardown_layer_surface();
 }
 
 // Seat and pointer listeners moved to seat.c
@@ -1361,7 +1515,11 @@ output_mode(void *data, struct wl_output *wl_output, uint32_t flags,
 static void
 output_done(void *data, struct wl_output *wl_output)
 {
-	// All output properties delivered; buffer_scale is already applied
+	// All output properties delivered; buffer_scale is already applied.
+	// If a layer surface teardown is pending (output came back after removal),
+	// now is the right time to rebuild.
+	if (pending_layer_rebuild)
+		rebuild_layer_surface();
 }
 
 // ---------------------------------------------------------------------------
@@ -1465,8 +1623,9 @@ surface_enter(void *data, struct wl_surface *surf, struct wl_output *entered)
 
 	if (entered && entered != output) {
 		output = entered;
-		wl_output_add_listener(output, &output_listener, NULL);
-		bind_xdg_output(output);
+		// Listener and xdg-output were already bound in registry_add for
+		// all known outputs; no need to re-add them here.
+		bind_xdg_output(output); // no-op if already bound
 	}
 }
 
@@ -1529,12 +1688,19 @@ registry_add(void *data, struct wl_registry *reg, uint32_t name,
 		wl_seat_add_listener(seat, get_seat_listener(), NULL);
 		if (verbose >= 2)
 			printf("[DBG²] Bound to wl_seat\n");
-	} else if (strcmp(interface, wl_output_interface.name) == 0 && !output) {
-		// Bind the first output; wl_output v2 is needed for scale events.
-		// Additional outputs are handled via wl_surface.enter events.
-		output = wl_registry_bind(reg, name, &wl_output_interface, 2);
-		wl_output_add_listener(output, &output_listener, NULL);
-		bind_xdg_output(output);
+	} else if (strcmp(interface, wl_output_interface.name) == 0) {
+		// Bind all outputs (not just the first); wl_output v2 for scale events.
+		// The global `output` pointer tracks the currently active one;
+		// surface_enter updates it when the bar moves to a different output.
+		struct wl_output *wl_out =
+			wl_registry_bind(reg, name, &wl_output_interface, 2);
+		struct output_info *oi = find_or_create_output_info(wl_out);
+		if (oi)
+			oi->registry_name = name;
+		wl_output_add_listener(wl_out, &output_listener, NULL);
+		bind_xdg_output(wl_out);
+		if (!output)
+			output = wl_out; // first output becomes the active one
 		if (verbose >= 2)
 			printf("[DBG²] Bound to wl_output\n");
 	} else if (strcmp(interface,
@@ -1562,11 +1728,55 @@ registry_add(void *data, struct wl_registry *reg, uint32_t name,
 static void
 registry_remove(void *data, struct wl_registry *reg, uint32_t name)
 {
-	// Handle removal of global objects if needed
-	// For now, we don't actively track removals since globals are
-	// considered relatively permanent for a single-bar application
 	if (verbose >= 2)
 		printf("[DBG²] Global object removed: name=%u\n", name);
+
+	// Check if a tracked wl_output was removed.
+	// When an output disappears (e.g. display source change), the compositor
+	// removes its global.  We must release our proxy and clear the slot so
+	// that a subsequent wl_registry_global for the same (or a new) output
+	// is bound fresh.  We also clear the global `output` pointer if the
+	// removed output was the active one — surface_enter will update it
+	// once the bar re-enters an output.
+	for (int i = 0; i < n_outputs; i++) {
+		if (outputs[i].registry_name != name)
+			continue;
+
+		if (verbose >= 2)
+			printf("[DBG²] Removing output '%s' (registry name %u)\n",
+				outputs[i].name, name);
+
+		// Release xdg-output proxy if we have one
+		if (outputs[i].xdg_out) {
+			zxdg_output_v1_destroy(outputs[i].xdg_out);
+			outputs[i].xdg_out = NULL;
+		}
+
+		// Track whether this was the output the bar is currently on
+		int was_active = (outputs[i].wl_out == output);
+
+		// If this was the active output, clear the global pointer
+		if (was_active)
+			output = NULL;
+
+		// Destroy the wl_output proxy (bound at v2; release requires v3)
+		wl_output_destroy(outputs[i].wl_out);
+		outputs[i].wl_out = NULL;
+
+		// Compact the array by swapping with the last entry
+		if (i < n_outputs - 1)
+			outputs[i] = outputs[n_outputs - 1];
+		n_outputs--;
+
+		// If the bar's output just disappeared, tear down the layer surface.
+		// The compositor will not send layer_closed reliably; we do it here.
+		// rebuild_layer_surface() will be called from output_done once the
+		// output re-announces itself.
+		if (was_active)
+			teardown_layer_surface();
+
+		break;
+	}
 }
 
 static const struct wl_registry_listener registry_listener = {
