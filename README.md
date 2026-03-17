@@ -5,6 +5,8 @@ and date/time widgets
 ([unrelated](https://www.youtube.com/watch?v=le-wL4Sm5Xg),
 [ditto](https://www.youtube.com/watch?v=C-fXYJj316Q)).
 
+![Preview](screenshot.png "Preview")
+
 ## Context
 
 ~20 years ago, I was happy using [wbar](https://github.com/rodolf0/wbar) as a
