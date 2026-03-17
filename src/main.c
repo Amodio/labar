@@ -353,6 +353,33 @@ fill_bg_gaps(int is_vertical, int icon_size_phys)
 }
 
 // ---------------------------------------------------------------------------
+// get_slot_size
+//
+// Returns the along-bar pixel size for slot i.
+// On horizontal bars, text-widget slots may be wider than icon_size.
+// On vertical bars every slot is icon_size square — the text widgets render
+// two lines inside the same square cell used by app icons.
+// ---------------------------------------------------------------------------
+int
+get_slot_size(int slot_index, int is_vertical)
+{
+	if (is_vertical)
+		return app_config.icon_size;
+
+	int date_slot = get_date_slot_index();
+	int net_slot = get_net_slot_index();
+	int si_slot = get_sysinfo_slot_index();
+
+	if (slot_index == date_slot && app_config.date_tile_width > 0)
+		return app_config.date_tile_width;
+	if (slot_index == net_slot && app_config.net_tile_width > 0)
+		return app_config.net_tile_width;
+	if (slot_index == si_slot && app_config.sysinfo_tile_width > 0)
+		return app_config.sysinfo_tile_width;
+	return app_config.icon_size;
+}
+
+// ---------------------------------------------------------------------------
 // get_icon_at_position
 //
 // Calculate which icon (if any) is at the given coordinate.
@@ -371,24 +398,14 @@ get_icon_at_position(double coord)
 	if (coord < 0)
 		return -1;
 
-	int icon_size = app_config.icon_size;
+	int is_vertical = (app_config.position == POSITION_LEFT ||
+		app_config.position == POSITION_RIGHT);
 	int spacing = app_config.icon_spacing;
-	int date_slot = get_date_slot_index();
-	int net_slot = get_net_slot_index();
-	int sysinfo_slot = get_sysinfo_slot_index();
 	int total_count = get_total_widget_count();
 
 	int pos = 0;
 	for (int i = 0; i < total_count; i++) {
-		int slot_size;
-		if (i == date_slot && app_config.date_tile_width > 0)
-			slot_size = app_config.date_tile_width;
-		else if (i == net_slot && app_config.net_tile_width > 0)
-			slot_size = app_config.net_tile_width;
-		else if (i == sysinfo_slot && app_config.sysinfo_tile_width > 0)
-			slot_size = app_config.sysinfo_tile_width;
-		else
-			slot_size = icon_size;
+		int slot_size = get_slot_size(i, is_vertical);
 		int slot_end = pos + slot_size;
 		if (coord >= pos && coord < slot_end)
 			return i;
@@ -408,25 +425,13 @@ get_offset_for_icon(int icon_index)
 	if (icon_index < 0 || icon_index >= total_count)
 		return 0;
 
-	int icon_size = app_config.icon_size;
+	int is_vertical = (app_config.position == POSITION_LEFT ||
+		app_config.position == POSITION_RIGHT);
 	int spacing = app_config.icon_spacing;
-	int date_slot = get_date_slot_index();
-	int net_slot = get_net_slot_index();
-	int sysinfo_slot = get_sysinfo_slot_index();
 
 	int pos = 0;
-	for (int i = 0; i < icon_index; i++) {
-		int slot_size;
-		if (i == date_slot && app_config.date_tile_width > 0)
-			slot_size = app_config.date_tile_width;
-		else if (i == net_slot && app_config.net_tile_width > 0)
-			slot_size = app_config.net_tile_width;
-		else if (i == sysinfo_slot && app_config.sysinfo_tile_width > 0)
-			slot_size = app_config.sysinfo_tile_width;
-		else
-			slot_size = icon_size;
-		pos += slot_size + spacing;
-	}
+	for (int i = 0; i < icon_index; i++)
+		pos += get_slot_size(i, is_vertical) + spacing;
 	return pos;
 }
 
@@ -734,11 +739,10 @@ date_repaint_tile(struct wl_surface *wl_surf)
 	int slot = get_date_slot_index();
 	int offset = get_offset_for_icon(slot) * buffer_scale;
 	int icon_size = app_config.icon_size * buffer_scale;
-	// Along-bar dimension may be wider than icon_size to fit the text;
-	// the cross-bar dimension is always icon_size.
-	int tile_w = (app_config.date_tile_width > 0 ? app_config.date_tile_width :
-												   app_config.icon_size) *
-		buffer_scale;
+	// On vertical bars every slot is icon_size × icon_size (get_slot_size
+	// returns icon_size).  On horizontal bars the tile may be wider.
+	int along_px = get_slot_size(slot, is_vertical) * buffer_scale;
+	int tile_w = is_vertical ? icon_size : along_px;
 	int tile_h = icon_size;
 
 	uint32_t *tile = malloc(tile_w * tile_h * 4);
@@ -748,16 +752,12 @@ date_repaint_tile(struct wl_surface *wl_surf)
 	date_draw_tile(tile, tile_w, tile_h, &app_config, get_corner_flags(slot));
 
 	if (is_vertical) {
-		// Vertical bar: offset is along Y; tile_w is the height, tile_h is the
-		// width
-		for (int ty = 0; ty < tile_w; ty++) {
-			uint32_t *src = tile + ty * tile_h;
+		for (int ty = 0; ty < tile_h; ty++) {
+			uint32_t *src = tile + ty * tile_w;
 			uint32_t *dst = pixels + (offset + ty) * phys_width;
-			memcpy(dst, src, tile_h * 4);
+			memcpy(dst, src, tile_w * 4);
 		}
 	} else {
-		// Horizontal bar: offset is along X; tile_w is the width, tile_h is the
-		// height
 		for (int ty = 0; ty < tile_h; ty++) {
 			uint32_t *src = tile + ty * tile_w;
 			uint32_t *dst = pixels + ty * phys_width + offset;
@@ -766,9 +766,7 @@ date_repaint_tile(struct wl_surface *wl_surf)
 	}
 	free(tile);
 
-	// Fill spacing gaps between adjacent bg-enabled tiles
 	fill_bg_gaps(is_vertical, icon_size);
-
 	wl_surface_attach(wl_surf, buffer, 0, 0);
 	wl_surface_damage(wl_surf, 0, 0, surf_width, surf_height);
 	wl_surface_commit(wl_surf);
@@ -791,9 +789,8 @@ net_repaint_tile(struct wl_surface *wl_surf)
 	int slot = get_net_slot_index();
 	int offset = get_offset_for_icon(slot) * buffer_scale;
 	int icon_size = app_config.icon_size * buffer_scale;
-	int tile_w = (app_config.net_tile_width > 0 ? app_config.net_tile_width :
-												  app_config.icon_size) *
-		buffer_scale;
+	int along_px = get_slot_size(slot, is_vertical) * buffer_scale;
+	int tile_w = is_vertical ? icon_size : along_px;
 	int tile_h = icon_size;
 
 	uint32_t *tile = malloc(tile_w * tile_h * 4);
@@ -803,10 +800,10 @@ net_repaint_tile(struct wl_surface *wl_surf)
 	net_draw_tile(tile, tile_w, tile_h, &app_config, get_corner_flags(slot));
 
 	if (is_vertical) {
-		for (int ty = 0; ty < tile_w; ty++) {
-			uint32_t *src = tile + ty * tile_h;
+		for (int ty = 0; ty < tile_h; ty++) {
+			uint32_t *src = tile + ty * tile_w;
 			uint32_t *dst = pixels + (offset + ty) * phys_width;
-			memcpy(dst, src, tile_h * 4);
+			memcpy(dst, src, tile_w * 4);
 		}
 	} else {
 		for (int ty = 0; ty < tile_h; ty++) {
@@ -817,7 +814,6 @@ net_repaint_tile(struct wl_surface *wl_surf)
 	}
 	free(tile);
 
-	// Fill spacing gaps between adjacent bg-enabled tiles
 	fill_bg_gaps(is_vertical, icon_size);
 
 	wl_surface_attach(wl_surf, buffer, 0, 0);
@@ -839,10 +835,8 @@ sysinfo_repaint_tile(struct wl_surface *wl_surf)
 	int slot = get_sysinfo_slot_index();
 	int offset = get_offset_for_icon(slot) * buffer_scale;
 	int icon_size = app_config.icon_size * buffer_scale;
-	int tile_w =
-		(app_config.sysinfo_tile_width > 0 ? app_config.sysinfo_tile_width :
-											 app_config.icon_size) *
-		buffer_scale;
+	int along_px = get_slot_size(slot, is_vertical) * buffer_scale;
+	int tile_w = is_vertical ? icon_size : along_px;
 	int tile_h = icon_size;
 
 	uint32_t *tile = malloc(tile_w * tile_h * 4);
@@ -853,10 +847,10 @@ sysinfo_repaint_tile(struct wl_surface *wl_surf)
 		get_corner_flags(slot));
 
 	if (is_vertical) {
-		for (int ty = 0; ty < tile_w; ty++) {
-			uint32_t *src = tile + ty * tile_h;
+		for (int ty = 0; ty < tile_h; ty++) {
+			uint32_t *src = tile + ty * tile_w;
 			uint32_t *dst = pixels + (offset + ty) * phys_width;
-			memcpy(dst, src, tile_h * 4);
+			memcpy(dst, src, tile_w * 4);
 		}
 	} else {
 		for (int ty = 0; ty < tile_h; ty++) {
@@ -867,7 +861,6 @@ sysinfo_repaint_tile(struct wl_surface *wl_surf)
 	}
 	free(tile);
 
-	// Fill spacing gaps between adjacent bg-enabled tiles
 	fill_bg_gaps(is_vertical, icon_size);
 
 	wl_surface_attach(wl_surf, buffer, 0, 0);
@@ -975,21 +968,14 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 			if (app_config.show_date) {
 				int slot = get_date_slot_index();
 				int offset = get_offset_for_icon(slot) * buffer_scale;
-				int tile_w = (app_config.date_tile_width > 0 ?
-									 app_config.date_tile_width :
-									 app_config.icon_size) *
-					buffer_scale;
-				int tile_h = icon_size;
-				uint32_t *tile = malloc(tile_w * tile_h * 4);
+				uint32_t *tile = malloc(icon_size * icon_size * 4);
 				if (tile) {
-					date_draw_tile(tile, tile_w, tile_h, &app_config,
+					date_draw_tile(tile, icon_size, icon_size, &app_config,
 						get_corner_flags(slot));
-					// Vertical bar: along-bar = Y, tile_w is the height of the
-					// slot
-					for (int ty = 0; ty < tile_w; ty++) {
-						uint32_t *src = tile + ty * tile_h;
+					for (int ty = 0; ty < icon_size; ty++) {
+						uint32_t *src = tile + ty * icon_size;
 						uint32_t *dst = pixels + (offset + ty) * phys_width;
-						memcpy(dst, src, tile_h * 4);
+						memcpy(dst, src, icon_size * 4);
 					}
 					free(tile);
 				}
@@ -999,19 +985,14 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 			if (app_config.show_net) {
 				int slot = get_net_slot_index();
 				int offset = get_offset_for_icon(slot) * buffer_scale;
-				int tile_w =
-					(app_config.net_tile_width > 0 ? app_config.net_tile_width :
-													 app_config.icon_size) *
-					buffer_scale;
-				int tile_h = icon_size;
-				uint32_t *tile = malloc(tile_w * tile_h * 4);
+				uint32_t *tile = malloc(icon_size * icon_size * 4);
 				if (tile) {
-					net_draw_tile(tile, tile_w, tile_h, &app_config,
+					net_draw_tile(tile, icon_size, icon_size, &app_config,
 						get_corner_flags(slot));
-					for (int ty = 0; ty < tile_w; ty++) {
-						uint32_t *src = tile + ty * tile_h;
+					for (int ty = 0; ty < icon_size; ty++) {
+						uint32_t *src = tile + ty * icon_size;
 						uint32_t *dst = pixels + (offset + ty) * phys_width;
-						memcpy(dst, src, tile_h * 4);
+						memcpy(dst, src, icon_size * 4);
 					}
 					free(tile);
 				}
@@ -1021,19 +1002,14 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 			if (app_config.show_sysinfo) {
 				int slot = get_sysinfo_slot_index();
 				int offset = get_offset_for_icon(slot) * buffer_scale;
-				int tile_w = (app_config.sysinfo_tile_width > 0 ?
-									 app_config.sysinfo_tile_width :
-									 app_config.icon_size) *
-					buffer_scale;
-				int tile_h = icon_size;
-				uint32_t *tile = malloc(tile_w * tile_h * 4);
+				uint32_t *tile = malloc(icon_size * icon_size * 4);
 				if (tile) {
-					sysinfo_draw_tile(tile, tile_w, tile_h, &app_config,
+					sysinfo_draw_tile(tile, icon_size, icon_size, &app_config,
 						get_corner_flags(slot));
-					for (int ty = 0; ty < tile_w; ty++) {
-						uint32_t *src = tile + ty * tile_h;
+					for (int ty = 0; ty < icon_size; ty++) {
+						uint32_t *src = tile + ty * icon_size;
 						uint32_t *dst = pixels + (offset + ty) * phys_width;
-						memcpy(dst, src, tile_h * 4);
+						memcpy(dst, src, icon_size * 4);
 					}
 					free(tile);
 				}
@@ -1277,21 +1253,13 @@ rebuild_layer_surface(void)
 		target_output = find_output_by_name(app_config.output_name);
 
 	int total_count = get_total_widget_count();
-	int date_slot_idx = get_date_slot_index();
-	int net_slot_idx = get_net_slot_index();
-	int sysinfo_slot_idx = get_sysinfo_slot_index();
+	int is_vertical = (app_config.position == POSITION_LEFT ||
+		app_config.position == POSITION_RIGHT);
 	int icon_span = 0;
 	for (int i = 0; i < total_count; i++) {
 		if (i > 0)
 			icon_span += app_config.icon_spacing;
-		if (i == date_slot_idx && app_config.date_tile_width > 0)
-			icon_span += app_config.date_tile_width;
-		else if (i == net_slot_idx && app_config.net_tile_width > 0)
-			icon_span += app_config.net_tile_width;
-		else if (i == sysinfo_slot_idx && app_config.sysinfo_tile_width > 0)
-			icon_span += app_config.sysinfo_tile_width;
-		else
-			icon_span += app_config.icon_size;
+		icon_span += get_slot_size(i, is_vertical);
 	}
 	int cross_size = app_config.icon_size;
 
@@ -1955,28 +1923,19 @@ main(int argc, char *argv[])
 	}
 
 	// Calculate bar dimensions.
-	// Regular slots each occupy icon_size; the date/net slots use their
-	// respective tile widths.
+	// Regular slots each occupy icon_size; text-widget slots use their
+	// computed tile widths on horizontal bars, but icon_size on vertical bars.
 	int total_count = get_total_widget_count();
-	int date_slot_idx = get_date_slot_index();
-	int net_slot_idx = get_net_slot_index();
-	int sysinfo_slot_idx = get_sysinfo_slot_index();
+	int is_vertical_bar = (app_config.position == POSITION_LEFT ||
+		app_config.position == POSITION_RIGHT);
 	int icon_span = 0;
 	for (int i = 0; i < total_count; i++) {
 		if (i > 0)
 			icon_span += app_config.icon_spacing;
-		if (i == date_slot_idx && app_config.date_tile_width > 0)
-			icon_span += app_config.date_tile_width;
-		else if (i == net_slot_idx && app_config.net_tile_width > 0)
-			icon_span += app_config.net_tile_width;
-		else if (i == sysinfo_slot_idx && app_config.sysinfo_tile_width > 0)
-			icon_span += app_config.sysinfo_tile_width;
-		else
-			icon_span += app_config.icon_size;
+		icon_span += get_slot_size(i, is_vertical_bar);
 	}
 	// The bar cross-dimension (height for horizontal bar, width for vertical)
-	// is always icon_size — font size only affects the slot's width, not the
-	// bar's thickness.
+	// is always icon_size.
 	int cross_size = app_config.icon_size;
 
 	if (verbose) {

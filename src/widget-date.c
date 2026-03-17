@@ -64,6 +64,29 @@ format_time(char *buf, int buf_len, const char *fmt, const struct tm *t,
 }
 
 /*
+ * fit_font_size
+ *
+ * Return the largest font size <= requested_size such that text fits within
+ * max_width pixels (with ~12% horizontal padding).  Used to auto-scale text
+ * on vertical bars where the tile is only icon_size wide.
+ */
+static double
+fit_font_size(cairo_t *cr, const char *text, double max_width,
+	double requested_size)
+{
+	double sz = requested_size;
+	while (sz > 6.0) {
+		cairo_set_font_size(cr, sz);
+		cairo_text_extents_t ext;
+		cairo_text_extents(cr, text, &ext);
+		if (ext.width <= max_width * 0.88)
+			return sz;
+		sz -= 1.0;
+	}
+	return sz;
+}
+
+/*
  * draw_centered_text
  *
  * Draw a single line of text centered horizontally inside a Cairo context.
@@ -305,6 +328,11 @@ date_draw_tile(uint32_t *data, int width, int height, const Config *cfg,
 
 	cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL,
 		CAIRO_FONT_WEIGHT_NORMAL);
+
+	// Auto-scale font sizes down if the text is wider than the tile.
+	// This happens on vertical bars where tile width == icon_size.
+	date_sz = fit_font_size(cr, date_str, width, date_sz);
+	time_sz = fit_font_size(cr, time_str, width, time_sz);
 
 	// -----------------------------------------------------------------------
 	// Layout: divide the tile height into two horizontal bands.

@@ -100,6 +100,25 @@ read_ram_pct(void)
 }
 
 /*
+ * fit_font_size — largest size <= requested such that text fits in max_width.
+ */
+static double
+fit_font_size(cairo_t *cr, const char *text, double max_width,
+	double requested_size)
+{
+	double sz = requested_size;
+	while (sz > 6.0) {
+		cairo_set_font_size(cr, sz);
+		cairo_text_extents_t ext;
+		cairo_text_extents(cr, text, &ext);
+		if (ext.width <= max_width * 0.88)
+			return sz;
+		sz -= 1.0;
+	}
+	return sz;
+}
+
+/*
  * draw_centered_text — identical helper used by widget-net and widget-date.
  */
 static void
@@ -295,6 +314,10 @@ sysinfo_draw_tile(uint32_t *data, int width, int height, const Config *cfg,
 	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 	cairo_select_font_face(cr, "monospace", CAIRO_FONT_SLANT_NORMAL,
 		CAIRO_FONT_WEIGHT_BOLD);
+
+	// Auto-scale font size if text is wider than the tile (vertical bar).
+	font_sz = fit_font_size(cr, cpu_str, width, font_sz);
+	font_sz = fit_font_size(cr, ram_str, width, font_sz);
 
 	int mid = height / 2;
 	double cpu_baseline = mid * 0.82;
