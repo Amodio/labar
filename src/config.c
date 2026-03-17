@@ -474,6 +474,8 @@ free_config(Config *cfg)
 	cfg->date_time_format = NULL;
 	free(cfg->net_iface);
 	cfg->net_iface = NULL;
+	free(cfg->output_name);
+	cfg->output_name = NULL;
 	free(cfg->sysinfo_exec);
 	cfg->sysinfo_exec = NULL;
 }
@@ -511,6 +513,7 @@ parse_config_file(FILE *fp)
 	cfg.icon_spacing = 0;			   // No spacing between icons by default
 	cfg.position = POSITION_BOTTOM;	   // Bar at the bottom by default
 	cfg.layer = LAYER_TOP;			   // Layer-shell top layer by default
+	cfg.output_name = NULL;			   // Use compositor default output
 	cfg.show_volume = 0;			   // Volume widget off by default
 	cfg.show_date = 0;				   // Date widget off by default
 	cfg.date_date_format = NULL;	   // Falls back to WIDGET_DATE_DATE_FORMAT
@@ -757,8 +760,12 @@ parse_config_file(FILE *fp)
 					cfg.layer = LAYER_OVERLAY;
 				else
 					cfg.layer = LAYER_TOP; // Default
+			} else if (strcmp(key, "output") == 0) {
+				free(cfg.output_name);
+				cfg.output_name = value[0] ? strdup(value) : NULL;
 				if (verbose >= 2)
-					printf("[DBG²]   layer: %s\n", value);
+					printf("[DBG²]   output: %s\n",
+						cfg.output_name ? cfg.output_name : "(auto)");
 			} else if (strcmp(key, "show-volume") == 0) {
 				cfg.show_volume =
 					(strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
@@ -1238,6 +1245,9 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp, "#   top (default):    above normal windows\n");
 	fprintf(fp, "#   overlay:          on top of everything\n");
 	fprintf(fp, "layer=top\n");
+	fprintf(fp, "# output: output name to place the bar on (empty = auto)\n");
+	fprintf(fp, "# output=eDP-1\n");
+	fprintf(fp, "output=\n");
 	fprintf(fp, "# show-net: show the network speed widget\n");
 	fprintf(fp, "show-net=true\n");
 	fprintf(fp, "# show-sysinfo: show the CPU/RAM usage widget\n");

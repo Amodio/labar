@@ -18,6 +18,8 @@ renders on any edge of the screen (top, bottom, left, or right) using the
 Icons are rendered from SVG or PNG files; the bar reacts to mouse clicks,
 right-clicks, and scroll events. HiDPI displays are supported via
 *wl_output.scale* (integer) and *wp_fractional_scale_v1* (fractional).
+Output names and logical geometry are obtained via
+*zxdg_output_manager_v1* when available.
 
 The configuration file is located at *~/.config/labar.cfg*. If it does not
 exist, *labar* generates a default one on first run.
@@ -32,16 +34,18 @@ exist, *labar* generates a default one on first run.
 
 	*-v*
 		Level 1 — general lifecycle messages: configuration loaded,
-		bar dimensions, output scale detected, HiDPI scale events,
+		bar dimensions, output scale detected, output names and
+		descriptions from *zxdg_output_v1*, HiDPI scale events,
 		volume changes, network interface selected, and
 		minute/second boundary repaints.
 
 	*-vv*
 		Level 2 — Wayland protocol details: globals bound
 		(wl_seat, wl_output, wp_fractional_scale_manager_v1,
-		wp_viewporter), surface enter/leave events, config key
-		parsing, icon cache hits, pointer enter/leave/click/scroll
-		events per slot.
+		wp_viewporter, zxdg_output_manager_v1), output logical
+		geometry, surface enter/leave events, config key parsing,
+		icon cache hits, pointer enter/leave/click/scroll events
+		per slot.
 
 	*-vvv*
 		Level 3 — file I/O: every SVG and PNG open attempt (success
@@ -110,6 +114,13 @@ volume widget → date/time widget.
 
 *layer=*_background_|_bottom_|_top_|_overlay_
 	Wayland layer-shell layer. Default: *top* (above normal windows).
+
+*output=*_NAME_
+	Name of the output (monitor) to place the bar on, as reported by
+	*zxdg_output_v1.name* (e.g. *eDP-1*, *HDMI-A-1*, *DP-2*). Run
+	*labar -v* to see available output names at startup. If omitted
+	or empty, the compositor chooses the output automatically.
+	Default: empty (compositor default).
 
 *show-sysinfo=*_true_|_false_
 	Show a CPU/RAM usage text slot. The slot renders two lines read from
@@ -252,6 +263,9 @@ label-offset=10
 label-size=10
 position=bottom
 layer=top
+# output: output name to place the bar on (empty = auto)
+# output=eDP-1
+output=
 show-sysinfo=true
 show-net=true
 show-volume=true
@@ -312,6 +326,12 @@ Icons can also be specified manually by providing a full path in *icon=*.
 - Fractional scaling is read from the *wp_fractional_scale_v1* protocol
   when the compositor advertises it (e.g. 1.5× or 1.25×). A
   *wp_viewport* corrects the logical-to-physical mapping.
+
+Output names (e.g. *eDP-1*, *HDMI-A-1*) and logical positions are
+read from the *zxdg_output_v1* listener when the compositor advertises
+*zxdg_output_manager_v1*. This information is currently used for
+diagnostics and verbose logging; future versions may use it to select
+which output the bar is placed on.
 
 The SHM buffer is allocated at the physical pixel resolution and
 *wl_surface_set_buffer_scale* (or *wp_viewport_set_destination* for

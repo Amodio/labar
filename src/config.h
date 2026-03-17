@@ -63,6 +63,7 @@ typedef struct {
 	int icon_spacing;	// Spacing between icons in pixels (default: 0)
 	Position position;	// Bar position on screen (default: bottom)
 	Layer layer;		// Layer-shell layer (default: bottom)
+	char *output_name;	// Target output name (NULL = compositor default)
 
 	// ---------------------------------------------------------------------------
 	// Volume widget

@@ -51,8 +51,4 @@ To install (locally) the pre-commit hook (checks the coding style), run once:
 ```
 
 ## Ideas
- * network activity (up/down speed) widget
- * CPU/RAM usage widget
- * date widget: open a calendar on left clicks
  * volume widget: make `alsa-lib-dev` optional + support `pulseaudio`/`pipewire`
- * xdg-output support (all by default)

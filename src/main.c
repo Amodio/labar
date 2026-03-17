@@ -34,6 +34,9 @@
 #include "fractional-scale-v1-protocol.h"
 #include "viewporter-protocol.h"
 
+// zxdg_output_manager_v1 for logical output geometry and output names.
+#include "xdg-output-unstable-v1-protocol.h"
+
 // Global verbose flag for debug output (0=none, 1=normal, 2=extra)
 int verbose = 0;
 
@@ -73,6 +76,24 @@ struct wp_fractional_scale_v1 *fractional_scale_obj = NULL;
 struct wp_viewporter *viewporter = NULL;
 struct wp_viewport *viewport_obj = NULL;
 int using_fractional_scale = 0; // 1 when fractional protocol is active
+
+// ---------------------------------------------------------------------------
+// xdg-output-unstable-v1 — logical geometry and output names
+// ---------------------------------------------------------------------------
+struct zxdg_output_manager_v1 *xdg_output_manager = NULL;
+
+// Per-output info populated by the zxdg_output_v1 listener.
+// We track up to 8 outputs; more than that is extremely unusual.
+#define MAX_OUTPUTS 8
+static struct output_info {
+	struct wl_output *wl_out;
+	struct zxdg_output_v1 *xdg_out;
+	char name[64];
+	char description[128];
+	int32_t logical_x, logical_y;
+	int32_t logical_w, logical_h;
+} outputs[MAX_OUTPUTS];
+static int n_outputs = 0;
 
 // ---------------------------------------------------------------------------
 // Layer-surface state
@@ -1195,6 +1216,131 @@ static const struct zwlr_layer_surface_v1_listener layer_listener = {
 };
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// xdg-output listener — logical geometry and human-readable output name
+// ---------------------------------------------------------------------------
+static struct output_info *
+find_output_info(struct wl_output *wl_out)
+{
+	for (int i = 0; i < n_outputs; i++)
+		if (outputs[i].wl_out == wl_out)
+			return &outputs[i];
+	return NULL;
+}
+
+static struct output_info *
+find_or_create_output_info(struct wl_output *wl_out)
+{
+	struct output_info *oi = find_output_info(wl_out);
+	if (oi)
+		return oi;
+	if (n_outputs >= MAX_OUTPUTS)
+		return NULL;
+	oi = &outputs[n_outputs++];
+	oi->wl_out = wl_out;
+	oi->xdg_out = NULL;
+	oi->name[0] = '\0';
+	oi->description[0] = '\0';
+	oi->logical_x = oi->logical_y = 0;
+	oi->logical_w = oi->logical_h = 0;
+	return oi;
+}
+
+static void
+xdg_output_logical_position(void *data, struct zxdg_output_v1 *xdg_out,
+	int32_t x, int32_t y)
+{
+	struct output_info *oi = (struct output_info *)data;
+	if (!oi)
+		return;
+	oi->logical_x = x;
+	oi->logical_y = y;
+}
+
+static void
+xdg_output_logical_size(void *data, struct zxdg_output_v1 *xdg_out, int32_t w,
+	int32_t h)
+{
+	struct output_info *oi = (struct output_info *)data;
+	if (!oi)
+		return;
+	oi->logical_w = w;
+	oi->logical_h = h;
+}
+
+static void
+xdg_output_done(void *data, struct zxdg_output_v1 *xdg_out)
+{
+	struct output_info *oi = (struct output_info *)data;
+	if (!oi)
+		return;
+	if (verbose >= 1)
+		printf("[DBG] xdg-output: name='%s' desc='%s' "
+			   "logical=%dx%d+%d+%d\n",
+			oi->name, oi->description, oi->logical_w, oi->logical_h,
+			oi->logical_x, oi->logical_y);
+}
+
+static void
+xdg_output_name(void *data, struct zxdg_output_v1 *xdg_out, const char *name)
+{
+	struct output_info *oi = (struct output_info *)data;
+	if (!oi)
+		return;
+	snprintf(oi->name, sizeof(oi->name), "%s", name);
+	if (verbose >= 1)
+		printf("[DBG] Output name: %s\n", oi->name);
+}
+
+static void
+xdg_output_description(void *data, struct zxdg_output_v1 *xdg_out,
+	const char *description)
+{
+	struct output_info *oi = (struct output_info *)data;
+	if (!oi)
+		return;
+	snprintf(oi->description, sizeof(oi->description), "%s", description);
+	if (verbose >= 1)
+		printf("[DBG] Output description: %s\n", oi->description);
+}
+
+static const struct zxdg_output_v1_listener xdg_output_listener = {
+	.logical_position = xdg_output_logical_position,
+	.logical_size = xdg_output_logical_size,
+	.done = xdg_output_done,
+	.name = xdg_output_name,
+	.description = xdg_output_description,
+};
+
+// Create a zxdg_output_v1 for a wl_output and start listening.
+static void
+bind_xdg_output(struct wl_output *wl_out)
+{
+	if (!xdg_output_manager || !wl_out)
+		return;
+	struct output_info *oi = find_or_create_output_info(wl_out);
+	if (!oi || oi->xdg_out)
+		return; // already bound
+	oi->xdg_out =
+		zxdg_output_manager_v1_get_xdg_output(xdg_output_manager, wl_out);
+	zxdg_output_v1_add_listener(oi->xdg_out, &xdg_output_listener, oi);
+}
+
+// Find a wl_output* by its xdg-output name (e.g. "eDP-1").
+// Returns NULL if not found or if xdg-output is unavailable.
+static struct wl_output *
+find_output_by_name(const char *name)
+{
+	if (!name || !name[0])
+		return NULL;
+	for (int i = 0; i < n_outputs; i++) {
+		if (strcmp(outputs[i].name, name) == 0)
+			return outputs[i].wl_out;
+	}
+	return NULL;
+}
+
+// ---------------------------------------------------------------------------
 // wl_output listener — reads the display's buffer scale for HiDPI
 // ---------------------------------------------------------------------------
 static void
@@ -1309,22 +1455,18 @@ static const struct wl_output_listener output_listener = {
 static void
 surface_enter(void *data, struct wl_surface *surf, struct wl_output *entered)
 {
-	if (verbose >= 2)
-		printf("[DBG²] Surface entered output %p\n", (void *)entered);
+	if (verbose >= 2) {
+		struct output_info *oi = find_output_info(entered);
+		if (oi && oi->name[0])
+			printf("[DBG²] Surface entered output '%s'\n", oi->name);
+		else
+			printf("[DBG²] Surface entered output %p\n", (void *)entered);
+	}
 
-	// If this is a different output than the one we tracked, re-read its
-	// scale and trigger a redraw if it changed.
 	if (entered && entered != output) {
-		// Rebind our output pointer; the old listener is still valid
-		// because we never destroy it, but scale events going forward will
-		// come from the new output through its own listener if we add one.
-		// For simplicity: request a new roundtrip so pending scale events
-		// from this output are processed, then check if scale changed.
-		// (A full multi-output tracking system would require maintaining a
-		//  list — this handles the common single-bar-moves-to-new-monitor
-		//  case.)
 		output = entered;
 		wl_output_add_listener(output, &output_listener, NULL);
+		bind_xdg_output(output);
 	}
 }
 
@@ -1392,6 +1534,7 @@ registry_add(void *data, struct wl_registry *reg, uint32_t name,
 		// Additional outputs are handled via wl_surface.enter events.
 		output = wl_registry_bind(reg, name, &wl_output_interface, 2);
 		wl_output_add_listener(output, &output_listener, NULL);
+		bind_xdg_output(output);
 		if (verbose >= 2)
 			printf("[DBG²] Bound to wl_output\n");
 	} else if (strcmp(interface,
@@ -1404,6 +1547,15 @@ registry_add(void *data, struct wl_registry *reg, uint32_t name,
 		viewporter = wl_registry_bind(reg, name, &wp_viewporter_interface, 1);
 		if (verbose >= 2)
 			printf("[DBG²] Bound to wp_viewporter\n");
+	} else if (strcmp(interface, zxdg_output_manager_v1_interface.name) == 0) {
+		xdg_output_manager =
+			wl_registry_bind(reg, name, &zxdg_output_manager_v1_interface, 3);
+		if (verbose >= 2)
+			printf("[DBG²] Bound to zxdg_output_manager_v1\n");
+		// Retroactively bind xdg-output for any wl_output already known.
+		// (wl_output may be announced before zxdg_output_manager_v1.)
+		if (output)
+			bind_xdg_output(output);
 	}
 }
 
@@ -1522,6 +1674,11 @@ main(int argc, char *argv[])
 	// A second roundtrip receives wl_output.scale (and .done) events so that
 	// buffer_scale is correctly set before any SHM buffer is allocated.
 	wl_display_roundtrip(display);
+
+	// A third roundtrip receives zxdg_output_v1 name/description/done events
+	// so output names are available for the output= config key lookup below.
+	if (xdg_output_manager)
+		wl_display_roundtrip(display);
 
 	// Compute the date widget tile width now that buffer_scale is known.
 	// date_compute_tile_size() returns a physical pixel count (it scales font
@@ -1656,8 +1813,24 @@ main(int argc, char *argv[])
 
 	// Promote the surface to a layer-shell surface using the configured layer.
 	// The namespace "labar" identifies our client to the compositor.
+	// If output= is configured, pin the bar to that specific output;
+	// otherwise pass NULL to let the compositor choose.
+	struct wl_output *target_output = NULL;
+	if (app_config.output_name && app_config.output_name[0]) {
+		target_output = find_output_by_name(app_config.output_name);
+		if (target_output) {
+			if (verbose)
+				printf("[DBG] Pinning bar to output '%s'\n",
+					app_config.output_name);
+		} else {
+			fprintf(stderr,
+				"warn: output '%s' not found — "
+				"using compositor default\n",
+				app_config.output_name);
+		}
+	}
 	layer_surface = zwlr_layer_shell_v1_get_layer_surface(layer_shell, surface,
-		NULL, wl_layer, "labar");
+		target_output, wl_layer, "labar");
 
 	// Set the layer for the surface
 	zwlr_layer_surface_v1_set_layer(layer_surface, wl_layer);

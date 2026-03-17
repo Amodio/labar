@@ -306,6 +306,7 @@ struct _CfgWin {
 	GtkSpinButton *label_offset_spin;
 	GtkDropDown *position_drop;
 	GtkDropDown *layer_drop;
+	GtkEntry *output_entry;
 
 	/* Widgets — reorderable rows */
 	GtkBox *widgets_box; // container rebuilt by refresh_widgets_list()
@@ -571,6 +572,11 @@ write_config(CfgWin *w)
 	c->label_offset = (int)gtk_spin_button_get_value(w->label_offset_spin);
 	c->position = (Position)gtk_drop_down_get_selected(w->position_drop);
 	c->layer = (Layer)gtk_drop_down_get_selected(w->layer_drop);
+	if (w->output_entry) {
+		free(c->output_name);
+		const char *v = gtk_editable_get_text(GTK_EDITABLE(w->output_entry));
+		c->output_name = (v && v[0]) ? strdup(v) : NULL;
+	}
 	c->show_volume = gtk_check_button_get_active(w->show_volume_check);
 	c->show_date = gtk_check_button_get_active(w->show_date_check);
 	c->show_net = gtk_check_button_get_active(w->show_net_check);
@@ -664,6 +670,14 @@ write_config(CfgWin *w)
 	fprintf(fp, "#   overlay:          on top of everything\n");
 	fprintf(fp, "layer=%s\n",
 		(unsigned)c->layer < 4 ? lay_str[c->layer] : "top");
+	if (w->output_entry) {
+		free(c->output_name);
+		const char *v = gtk_editable_get_text(GTK_EDITABLE(w->output_entry));
+		c->output_name = (v && v[0]) ? strdup(v) : NULL;
+	}
+	fprintf(fp, "# output: output name to place the bar on (empty = auto)\n");
+	fprintf(fp, "# output=eDP-1\n");
+	fprintf(fp, "output=%s\n", c->output_name ? c->output_name : "");
 	fprintf(fp, "# show-net: show the network speed widget\n");
 	fprintf(fp, "show-net=%s\n", c->show_net ? "true" : "false");
 	fprintf(fp, "# show-sysinfo: show the CPU/RAM usage widget\n");
@@ -1979,6 +1993,16 @@ on_activate(GApplication *gapp, gpointer data)
 		w->layer_drop = make_dropdown(lay, (int)w->cfg.layer);
 		grid_row(GTK_GRID(gg), r++, "Layer:", GTK_WIDGET(w->layer_drop));
 		connect_mark_unsaved(GTK_WIDGET(w->layer_drop), w);
+	}
+
+	{
+		w->output_entry = GTK_ENTRY(gtk_entry_new());
+		gtk_editable_set_text(GTK_EDITABLE(w->output_entry),
+			w->cfg.output_name ? w->cfg.output_name : "");
+		gtk_entry_set_placeholder_text(w->output_entry, "eDP-1 (empty = auto)");
+		gtk_widget_set_hexpand(GTK_WIDGET(w->output_entry), TRUE);
+		grid_row(GTK_GRID(gg), r++, "Output:", GTK_WIDGET(w->output_entry));
+		connect_mark_unsaved(GTK_WIDGET(w->output_entry), w);
 	}
 
 	/* ---- Widgets ---- */
