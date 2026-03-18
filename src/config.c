@@ -473,6 +473,8 @@ free_config(Config *cfg)
 	cfg->date_date_format = NULL;
 	free(cfg->date_time_format);
 	cfg->date_time_format = NULL;
+	free(cfg->volume_exec);
+	cfg->volume_exec = NULL;
 	free(cfg->net_iface);
 	cfg->net_iface = NULL;
 	free(cfg->output_name);
@@ -516,6 +518,7 @@ parse_config_file(FILE *fp)
 	cfg.layer = LAYER_TOP;			   // Layer-shell top layer by default
 	cfg.output_name = NULL;			   // Use compositor default output
 	cfg.show_volume = 0;			   // Volume widget off by default
+	cfg.volume_exec = NULL;			   // Falls back to "foot -e alsamixer"
 	cfg.show_date = 0;				   // Date widget off by default
 	cfg.date_date_format = NULL;	   // Falls back to WIDGET_DATE_DATE_FORMAT
 	cfg.date_date_color = 0;		   // Falls back to WIDGET_DATE_DATE_COLOR
@@ -538,7 +541,7 @@ parse_config_file(FILE *fp)
 	cfg.sysinfo_bg_color = 0;  // Transparent by default
 	cfg.sysinfo_tile_width = 0;
 	cfg.sysinfo_exec = strdup("foot -e btop"); // default click command
-	// Default order: net(0), sysinfo(4), apps(3), volume(1), date(2)
+	// Default order: sysinfo(4), net(0), apps(3), volume(1), date(2)
 	cfg.widget_order[0] = 4; // sysinfo
 	cfg.widget_order[1] = 0; // net
 	cfg.widget_order[2] = 3; // apps
@@ -555,6 +558,26 @@ parse_config_file(FILE *fp)
 	int in_widget_date_section = 0;
 	int in_widget_net_section = 0;
 	int in_widget_sysinfo_section = 0;
+	int in_widget_volume_section = 0;
+
+	// Track section-declaration order to derive widget_order[].
+	// Each element is a widget ID (0–4) in the order its section first appears.
+	// -1 marks an unfilled slot.
+	int section_order[5] = {-1, -1, -1, -1, -1};
+	int section_order_count = 0;
+
+	// Helper: record a widget/apps ID the first time its section is seen.
+#define RECORD_SECTION(id)                                                     \
+	do {                                                                       \
+		int _already = 0;                                                      \
+		for (int _s = 0; _s < section_order_count; _s++)                       \
+			if (section_order[_s] == (id)) {                                   \
+				_already = 1;                                                  \
+				break;                                                         \
+			}                                                                  \
+		if (!_already && section_order_count < 5)                              \
+			section_order[section_order_count++] = (id);                       \
+	} while (0)
 
 	if (verbose >= 2)
 		printf("[DBG²] Parsing config file\n");
@@ -627,6 +650,7 @@ parse_config_file(FILE *fp)
 					in_widget_date_section = 0;
 					in_widget_net_section = 0;
 					in_widget_sysinfo_section = 0;
+					in_widget_volume_section = 0;
 					if (verbose >= 2)
 						printf("[DBG²] Entering "
 							   "[global] section\n");
@@ -640,6 +664,8 @@ parse_config_file(FILE *fp)
 					in_widget_date_section = 0;
 					in_widget_net_section = 0;
 					in_widget_sysinfo_section = 0;
+					in_widget_volume_section = 0;
+					RECORD_SECTION(3); // WIDGET_ID_APPS
 					if (verbose >= 2)
 						printf("[DBG²] Entering [apps] "
 							   "section\n");
@@ -652,6 +678,8 @@ parse_config_file(FILE *fp)
 					in_widget_date_section = 1;
 					in_widget_net_section = 0;
 					in_widget_sysinfo_section = 0;
+					in_widget_volume_section = 0;
+					RECORD_SECTION(2); // WIDGET_ID_DATE
 					if (verbose >= 2)
 						printf("[DBG²] Entering [widget-date] section\n");
 				} else if (strncmp(line, "[widget-net]", 12) == 0) {
@@ -660,6 +688,8 @@ parse_config_file(FILE *fp)
 					in_widget_date_section = 0;
 					in_widget_net_section = 1;
 					in_widget_sysinfo_section = 0;
+					in_widget_volume_section = 0;
+					RECORD_SECTION(0); // WIDGET_ID_NET
 					if (verbose >= 2)
 						printf("[DBG²] Entering [widget-net] section\n");
 				} else if (strncmp(line, "[widget-sysinfo]", 16) == 0) {
@@ -668,13 +698,27 @@ parse_config_file(FILE *fp)
 					in_widget_date_section = 0;
 					in_widget_net_section = 0;
 					in_widget_sysinfo_section = 1;
+					in_widget_volume_section = 0;
+					RECORD_SECTION(4); // WIDGET_ID_SYSINFO
 					if (verbose >= 2)
 						printf("[DBG²] Entering [widget-sysinfo] section\n");
+				} else if (strncmp(line, "[widget-volume]", 15) == 0) {
+					in_global_section = 0;
+					in_apps_section = 0;
+					in_widget_date_section = 0;
+					in_widget_net_section = 0;
+					in_widget_sysinfo_section = 0;
+					in_widget_volume_section = 1;
+					RECORD_SECTION(1); // WIDGET_ID_VOLUME
+					if (verbose >= 2)
+						printf("[DBG²] Entering [widget-volume] section\n");
 				} else {
 					in_global_section = 0;
 					in_apps_section = 0;
 					in_widget_date_section = 0;
 					in_widget_net_section = 0;
+					in_widget_sysinfo_section = 0;
+					in_widget_volume_section = 0;
 					in_widget_sysinfo_section = 0;
 					if (verbose >= 2)
 						printf("[DBG²] Unknown "
@@ -791,42 +835,6 @@ parse_config_file(FILE *fp)
 				if (verbose >= 2)
 					printf("[DBG²]   show-sysinfo: %s\n",
 						cfg.show_sysinfo ? "true" : "false");
-			} else if (strcmp(key, "widget-order") == 0) {
-				// Format: "net,sysinfo,apps,volume,date"
-				const char *names[5] = {
-					"net", "volume", "date", "apps", "sysinfo"};
-				int order[5] = {
-					4, 0, 3, 1, 2}; // default: sysinfo,net,apps,volume,date
-				char tmp[64];
-				strncpy(tmp, value, sizeof(tmp) - 1);
-				tmp[sizeof(tmp) - 1] = '\0';
-				char *tok = tmp;
-				for (int i = 0; i < 5; i++) {
-					while (*tok == ' ' || *tok == ',')
-						tok++;
-					if (!*tok)
-						break;
-					char *end = tok;
-					while (*end && *end != ',')
-						end++;
-					char saved = *end;
-					*end = '\0';
-					for (int j = 0; j < 5; j++) {
-						if (strcmp(tok, names[j]) == 0) {
-							order[i] = j;
-							break;
-						}
-					}
-					*end = saved;
-					tok = end;
-				}
-				for (int i = 0; i < 5; i++)
-					cfg.widget_order[i] = order[i];
-				if (verbose >= 2)
-					printf("[DBG²]   widget-order: %s,%s,%s,%s,%s\n",
-						names[cfg.widget_order[0]], names[cfg.widget_order[1]],
-						names[cfg.widget_order[2]], names[cfg.widget_order[3]],
-						names[cfg.widget_order[4]]);
 			} else if (strcmp(key, "widget-net-bg-color") == 0) {
 				const char *hex = value;
 				if (hex[0] == '#')
@@ -840,6 +848,18 @@ parse_config_file(FILE *fp)
 				if (verbose >= 2)
 					printf("[DBG²]   widget-net-bg-color: 0x%08X\n",
 						cfg.net_bg_color);
+			}
+			continue;
+		}
+
+		// Handle [widget-volume] section
+		if (in_widget_volume_section) {
+			if (strcmp(key, "exec") == 0) {
+				free(cfg.volume_exec);
+				cfg.volume_exec = value[0] ? strdup(value) : NULL;
+				if (verbose >= 2)
+					printf("[DBG²]   widget-volume exec: %s\n",
+						cfg.volume_exec ? cfg.volume_exec : "(none)");
 			}
 			continue;
 		}
@@ -1120,6 +1140,44 @@ parse_config_file(FILE *fp)
 		}
 	}
 
+	// Apply section-declaration order to widget_order[].
+	// Any widget IDs not seen in the file are appended in their default order.
+	if (section_order_count > 0) {
+		// Build a list of IDs missing from the file (in default order)
+		static const int default_order[5] = {4, 0, 3, 1, 2};
+		int filled = 0;
+		int result[5];
+		// First, copy the IDs seen in the file
+		for (int i = 0; i < section_order_count; i++)
+			result[filled++] = section_order[i];
+		// Then append any IDs not yet present, preserving default relative
+		// order
+		for (int d = 0; d < 5; d++) {
+			int id = default_order[d];
+			int seen = 0;
+			for (int k = 0; k < filled; k++)
+				if (result[k] == id) {
+					seen = 1;
+					break;
+				}
+			if (!seen)
+				result[filled++] = id;
+		}
+		for (int i = 0; i < 5; i++)
+			cfg.widget_order[i] = result[i];
+		if (verbose >= 2) {
+			static const char *wnames[5] = {
+				"net", "volume", "date", "apps", "sysinfo"};
+			printf("[DBG²]   widget-order (from sections): "
+				   "%s,%s,%s,%s,%s\n",
+				wnames[cfg.widget_order[0]], wnames[cfg.widget_order[1]],
+				wnames[cfg.widget_order[2]], wnames[cfg.widget_order[3]],
+				wnames[cfg.widget_order[4]]);
+		}
+	}
+
+#undef RECORD_SECTION
+
 	return cfg;
 }
 
@@ -1257,8 +1315,6 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp, "show-volume=true\n");
 	fprintf(fp, "# show-date: show the date/time widget (last slot)\n");
 	fprintf(fp, "show-date=true\n");
-	fprintf(fp, "# widget-order: bar order of widgets and app icons\n");
-	fprintf(fp, "widget-order=sysinfo,net,apps,volume,date\n");
 	fprintf(fp, "\n[widget-sysinfo]\n");
 	fprintf(fp, "# cpu-color: color for the CPU usage line\n");
 	fprintf(fp, "cpu-color=#FFEB3B\n");
@@ -1310,6 +1366,10 @@ write_default_config(DesktopEntry **entries, int count)
 		written++;
 	}
 
+	fprintf(fp, "\n[widget-volume]\n");
+	fprintf(fp,
+		"# exec: command to run on right-click (default: foot -e alsamixer)\n");
+	fprintf(fp, "exec=foot -e alsamixer\n");
 	fprintf(fp, "\n[widget-date]\n");
 	fprintf(fp, "# Date line (upper half of the tile)\n");
 	fprintf(fp, "# format: strftime(3) format string, e.g. \"%%a %%d %%B\"\n");

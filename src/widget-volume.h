@@ -77,12 +77,13 @@ void volume_get_label(char *buf, int buf_len, int percent, int muted);
 //
 // React to a mouse button press on the volume icon.
 //   BTN_LEFT  → toggle PCM mute (alsa-lib)
-//   BTN_RIGHT → launch  foot -e alsamixer  (fork + execvp)
+//   BTN_RIGHT → launch exec_cmd (falls back to "foot -e alsamixer" if NULL)
 //
 // Parameters:
-//   button – Linux input event button code (BTN_LEFT / BTN_RIGHT)
+//   button    – Linux input event button code (BTN_LEFT / BTN_RIGHT)
+//   exec_cmd  – right-click command from cfg->volume_exec (may be NULL)
 // ---------------------------------------------------------------------------
-void volume_handle_click(uint32_t button);
+void volume_handle_click(uint32_t button, const char *exec_cmd);
 
 // ---------------------------------------------------------------------------
 // volume_handle_scroll

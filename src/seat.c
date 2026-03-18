@@ -532,7 +532,7 @@ pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 				state_name);
 		}
 		if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
-			volume_handle_click(button);
+			volume_handle_click(button, app_config.volume_exec);
 			volume_repaint_tile(surface);
 		}
 	} else if (net_slot >= 0 && icon_index == net_slot) {

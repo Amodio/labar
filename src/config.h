@@ -74,12 +74,13 @@ typedef struct {
 	// as a text label (respecting label_mode / label_color / label_size).
 	//
 	// Mouse bindings for the volume slot:
-	//   Left-click   : amixer -q sset PCM toggle   (mute / unmute)
-	//   Right-click  : foot -e alsamixer            (open full mixer)
+	//   Left-click   : toggle PCM mute via alsa-lib
+	//   Right-click  : volume_exec (default: "foot -e alsamixer")
 	//   Scroll-up    : amixer -q sset PCM 4%+       (raise by 4 %)
 	//   Scroll-down  : amixer -q sset PCM 4%-       (lower by 4 %)
 	// ---------------------------------------------------------------------------
-	int show_volume; // 1 = append volume icon, 0 = disabled (default: 0)
+	int show_volume;   // 1 = append volume icon, 0 = disabled (default: 0)
+	char *volume_exec; // command to run on right-click (NULL = default)
 
 	// ---------------------------------------------------------------------------
 	// Date / time widget
@@ -164,7 +165,8 @@ typedef struct {
 	//
 	// widget_order[0..4] stores the five slot IDs in their on-bar order.
 	// IDs: 0 = net, 1 = volume, 2 = date, 3 = apps, 4 = sysinfo.
-	// Default order: net(0), sysinfo(4), apps(3), volume(1), date(2).
+	// The order is derived from the sequence of [widget-*] / [apps] sections
+	// in the config file.  Default order: sysinfo, net, apps, volume, date.
 	// ---------------------------------------------------------------------------
 	int widget_order[5]; // bar order of widgets + apps block
 } Config;

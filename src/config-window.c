@@ -312,6 +312,7 @@ struct _CfgWin {
 	GtkBox *widgets_box; // container rebuilt by refresh_widgets_list()
 	/* Per-widget controls (rebuilt each time; kept here for write_config) */
 	GtkCheckButton *show_volume_check;
+	GtkEntry *volume_exec_entry;
 	GtkCheckButton *show_date_check;
 	GtkCheckButton *show_net_check;
 	GtkCheckButton *show_sysinfo_check;
@@ -578,6 +579,12 @@ write_config(CfgWin *w)
 		c->output_name = (v && v[0]) ? strdup(v) : NULL;
 	}
 	c->show_volume = gtk_check_button_get_active(w->show_volume_check);
+	if (w->volume_exec_entry) {
+		free(c->volume_exec);
+		const char *v =
+			gtk_editable_get_text(GTK_EDITABLE(w->volume_exec_entry));
+		c->volume_exec = (v && v[0]) ? strdup(v) : NULL;
+	}
 	c->show_date = gtk_check_button_get_active(w->show_date_check);
 	c->show_net = gtk_check_button_get_active(w->show_net_check);
 	if (w->show_sysinfo_check)
@@ -686,14 +693,6 @@ write_config(CfgWin *w)
 	fprintf(fp, "show-volume=%s\n", c->show_volume ? "true" : "false");
 	fprintf(fp, "# show-date: show the date/time widget (last slot)\n");
 	fprintf(fp, "show-date=%s\n", c->show_date ? "true" : "false");
-	fprintf(fp, "# widget-order: bar order of widgets and app icons\n");
-	{
-		static const char *wnames[5] = {
-			"net", "volume", "date", "apps", "sysinfo"};
-		fprintf(fp, "widget-order=%s,%s,%s,%s,%s\n", wnames[c->widget_order[0]],
-			wnames[c->widget_order[1]], wnames[c->widget_order[2]],
-			wnames[c->widget_order[3]], wnames[c->widget_order[4]]);
-	}
 
 	/* Walk widget_order[5] in order, emitting each section.
 	 * WIDGET_ID_APPS (3) triggers the [apps] block. */
@@ -791,8 +790,15 @@ write_config(CfgWin *w)
 				}                                                              \
 				_ch = gtk_widget_get_next_sibling(_ch);                        \
 			}                                                                  \
-		} /* volume (wid==1) has no section of its own */ /* sysinfo (wid==4)  \
-														   */                  \
+		} /* volume (wid==1) */                                                \
+		else if ((wid) == 1) {                                                 \
+			fprintf(fp, "\n[widget-volume]\n");                                \
+			fprintf(fp,                                                        \
+				"# exec: command to run on right-click"                        \
+				" (default: foot -e alsamixer)\n");                            \
+			fprintf(fp, "exec=%s\n",                                           \
+				c->volume_exec ? c->volume_exec : "foot -e alsamixer");        \
+		} /* sysinfo (wid==4) */                                               \
 		else if ((wid) == 4) {                                                 \
 			fprintf(fp, "\n[widget-sysinfo]\n");                               \
 			fprintf(fp, "# cpu-color: color for the CPU usage line\n");        \
@@ -1170,6 +1176,12 @@ harvest_widget_fields(CfgWin *w)
 {
 	if (w->show_volume_check)
 		w->cfg.show_volume = gtk_check_button_get_active(w->show_volume_check);
+	if (w->volume_exec_entry) {
+		free(w->cfg.volume_exec);
+		const char *v =
+			gtk_editable_get_text(GTK_EDITABLE(w->volume_exec_entry));
+		w->cfg.volume_exec = (v && v[0]) ? strdup(v) : NULL;
+	}
 	if (w->show_date_check)
 		w->cfg.show_date = gtk_check_button_get_active(w->show_date_check);
 	if (w->show_net_check)
@@ -1418,9 +1430,21 @@ make_widget_row(CfgWin *w, int pos)
 			connect_mark_unsaved(GTK_WIDGET(w->net_bg_color_btn), w));
 		break;
 	}
-	case 1: /* Volume — no sub-settings */
+	case 1: { /* Volume */
 		w->show_volume_check = cb;
+
+		w->volume_exec_entry = GTK_ENTRY(gtk_entry_new());
+		gtk_editable_set_text(GTK_EDITABLE(w->volume_exec_entry),
+			w->cfg.volume_exec ? w->cfg.volume_exec : "");
+		gtk_entry_set_placeholder_text(w->volume_exec_entry,
+			"foot -e alsamixer");
+		gtk_widget_set_hexpand(GTK_WIDGET(w->volume_exec_entry), TRUE);
+		grid_row(GTK_GRID(sg), r++,
+			"Right-click command:", GTK_WIDGET(w->volume_exec_entry));
+		store_signal_pair(frame, G_OBJECT(w->volume_exec_entry),
+			connect_mark_unsaved(GTK_WIDGET(w->volume_exec_entry), w));
 		break;
+	}
 	case 3: /* Apps — no sub-settings; checkbox is non-interactive */
 		gtk_widget_set_sensitive(GTK_WIDGET(cb), FALSE);
 		break;

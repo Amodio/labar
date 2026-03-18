@@ -287,23 +287,28 @@ volume_adjust(int up)
 }
 
 // ---------------------------------------------------------------------------
-// volume_launch_alsamixer
+// volume_launch_mixer
 //
-// Launches  alsamixer  in the user's preferred terminal by constructing a
-// synthetic DesktopEntry with terminal=true and handing it to launch_app(),
-// which already handles double-fork, setsid, and /dev/null redirection.
+// Launches the configured mixer command.  Falls back to "foot -e alsamixer"
+// when exec_cmd is NULL or empty.  The command is split on the first space
+// so that arguments are passed correctly to execvp().
 // ---------------------------------------------------------------------------
 static void
-volume_launch_alsamixer(void)
+volume_launch_mixer(const char *exec_cmd)
 {
-	if (verbose)
-		printf("[VOL] Right click → alsamixer (via launch_app)\n");
+	if (!exec_cmd || !exec_cmd[0])
+		exec_cmd = "foot -e alsamixer";
 
+	if (verbose)
+		printf("[VOL] Right click → %s\n", exec_cmd);
+
+	// Build a synthetic DesktopEntry and hand it to launch_app() which
+	// already handles double-fork, setsid, and /dev/null redirection.
 	DesktopEntry entry = {
-		.name = "alsamixer",
-		.exec = "alsamixer",
+		.name = "mixer",
+		.exec = (char *)exec_cmd,
 		.icon = NULL,
-		.terminal = 1,
+		.terminal = 0,
 	};
 	launch_app(&entry);
 }
@@ -312,14 +317,14 @@ volume_launch_alsamixer(void)
 // volume_handle_click
 // ---------------------------------------------------------------------------
 void
-volume_handle_click(uint32_t button)
+volume_handle_click(uint32_t button, const char *exec_cmd)
 {
 	if (button == BTN_LEFT) {
 		if (verbose)
 			printf("[VOL] Left click → toggle mute\n");
 		volume_toggle_mute();
 	} else if (button == BTN_RIGHT) {
-		volume_launch_alsamixer();
+		volume_launch_mixer(exec_cmd);
 	}
 }
 
