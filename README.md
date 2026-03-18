@@ -15,7 +15,7 @@ Now with Wayland replacing X11, I am gladly using
 [labwc](https://labwc.github.io).
 
 [lavalauncher](https://git.sr.ht/~leon_plickat/lavalauncher) is the closest
-dock to my knowledge, but it seems discontinued (4 years) and lacks features.
+dock to my knowledge, but it is discontinued (4 years) and lacks features.
 
 ## Features
 
