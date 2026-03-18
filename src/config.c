@@ -219,6 +219,7 @@ find_best_icon(const char *icon_name)
 	IconCandidate *candidates = NULL;
 	int candidate_count = 0;
 	int capacity = 16;
+	char *best_path = NULL;
 
 	candidates = malloc(capacity * sizeof(IconCandidate));
 	if (!candidates)
@@ -357,7 +358,7 @@ find_best_icon(const char *icon_name)
 	}
 
 	// Return the best one
-	char *best_path = strdup(candidates[0].path);
+	best_path = strdup(candidates[0].path);
 
 	if (verbose >= 2)
 		printf("[DBG²] Best icon selected: %s\n", best_path);

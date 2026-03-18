@@ -1,6 +1,6 @@
 project('labar', 'c',
   version: '0.9.0',
-  default_options: ['c_std=c11', 'prefix=/usr']
+  default_options: ['c_std=c11', 'prefix=/usr', 'strip=true']
 )
 
 # Wayland dependencies
