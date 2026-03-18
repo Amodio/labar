@@ -72,10 +72,10 @@ exist, *labar* generates a default one on first run.
 # CONFIGURATION
 
 *~/.config/labar.cfg* uses an INI-style format with a *[global]* section,
-optional widget sections (*[widget-sysinfo]*, *[widget-net]*, *[widget-date]*),
-and an *[apps]* section. The bar order is fully configurable via
-*widget-order*; the default is: CPU/RAM widget → net widget → app icons →
-volume widget → date/time widget.
+optional widget sections (*[widget-sysinfo]*, *[widget-net]*, *[widget-volume]*,
+*[widget-date]*), and an *[apps]* section. The bar order is determined by the
+sequence of sections in the file; the default is: CPU/RAM widget → net widget →
+app icons → volume widget → date/time widget.
 
 ## [global] keys
 
@@ -135,20 +135,14 @@ volume widget → date/time widget.
 
 *show-volume=*_true_|_false_
 	Show a volume icon slot. The slot displays the current ALSA PCM
-	level; left-click toggles mute, right-click opens *alsamixer* in a
-	terminal, and scroll adjusts the volume. Default: *true*.
+	level; left-click toggles mute, right-click runs the command
+	configured in *[widget-volume]*, and scroll adjusts the volume.
+	Default: *true*.
 
 *show-date=*_true_|_false_
 	Show a date/time text slot. The slot renders two lines of text using
 	Cairo; no icon file is required. Settings live in the
 	*[widget-date]* section. Default: *true*.
-
-*widget-order=*_WIDGET_,_WIDGET_,_WIDGET_,_WIDGET_,_WIDGET_
-	Bar order of the four widgets and the app-icon block as a
-	comma-separated list of five names: *sysinfo*, *net*, *volume*,
-	*date*, *apps*. Entries listed before *apps* appear to the left of
-	the app icons; entries listed after *apps* appear to the right.
-	Default: *sysinfo,net,apps,volume,date*.
 
 ## [widget-sysinfo] keys
 
@@ -193,6 +187,13 @@ volume widget → date/time widget.
 	Background fill color for the tile. Default: *#00000094* (black,
 	42% transparent).
 
+## [widget-volume] keys
+
+*exec=*_COMMAND_
+	Command to run when the slot is right-clicked. Parsed and launched
+	with *execvp*(3); leave empty to disable right-click handling.
+	Default: *foot -e alsamixer*.
+
 ## [widget-date] keys
 
 *format=*_FORMAT_
@@ -222,9 +223,18 @@ volume widget → date/time widget.
 	*#00000000* is fully transparent. Default: *#00000094* (black,
 	42% transparent).
 
-## Background pill grouping
+## Widget ordering
 
-When two or more adjacent slots all have a non-transparent *bg-color*,
+The on-bar position of each widget and the app-icon block is determined by
+the order in which their sections appear in the config file. Sections that
+appear before *[apps]* are placed to the left of the app icons; sections that
+appear after *[apps]* are placed to the right. Any widget whose section is
+absent is appended in the default relative order.
+
+Default order: *[widget-sysinfo]* → *[widget-net]* → *[apps]* →
+*[widget-volume]* → *[widget-date]*.
+
+## Background pill grouping all have a non-transparent *bg-color*,
 *labar* merges their backgrounds into a single rounded pill: inner shared
 edges are drawn as straight lines and the spacing gap between tiles is filled
 with the same colour. Only the outer edges of the group receive rounded
@@ -270,7 +280,6 @@ show-sysinfo=true
 show-net=true
 show-volume=true
 show-date=true
-widget-order=sysinfo,net,apps,volume,date
 
 [widget-sysinfo]
 cpu-color=#FFEB3B
@@ -294,6 +303,9 @@ exec=/usr/lib/firefox/firefox %u
 name=Foot
 icon=/usr/share/icons/hicolor/scalable/apps/foot.svg
 exec=foot
+
+[widget-volume]
+exec=foot -e alsamixer
 
 [widget-date]
 format=%a %d %B
@@ -348,12 +360,14 @@ moves to a different monitor via *wl_surface.enter*.
 
 *Volume slot* (when *show-volume=true*)
 	Left-click toggles ALSA PCM mute.
-	Right-click opens *alsamixer* in a terminal.
+	Right-click runs the command set by *exec=* in *[widget-volume]*
+	(default: *foot -e alsamixer*); no action if *exec=* is empty.
 	Scroll up/down adjusts PCM volume by 4%.
 
 *CPU/RAM usage slot* (when *show-sysinfo=true*)
 	Left-click runs the command configured with *exec=* in
-	*[widget-sysinfo]*. Default command: *foot -e btop*.
+	*[widget-sysinfo]* (default: *foot -e btop*); no action if
+	*exec=* is empty.
 	Right-click and scroll have no binding.
 
 *Network speed slot* (when *show-net=true*)
