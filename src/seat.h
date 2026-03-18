@@ -50,6 +50,7 @@ int get_volume_slot_index(void);
 int get_net_slot_index(void);
 int get_sysinfo_slot_index(void);
 int get_app_first_slot(void);
+int get_slot_size(int slot_index, int is_vertical);
 int get_corner_flags(int slot_index);
 int get_offset_for_icon(int icon_index);
 int get_icon_at_position(double coord);

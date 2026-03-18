@@ -56,7 +56,7 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 	// Treat leaving the surface as moving to no icon: clear the hover label
 	// on whichever icon was last highlighted and reset the tracking index.
 	if (last_hovered_icon >= 0 && app_config.label_mode == LABEL_MODE_HOVER &&
-		buffer) {
+		surface && buffer) {
 		int icon_size = app_config.icon_size * buffer_scale;
 		int idx = last_hovered_icon;
 		int offset = get_offset_for_icon(idx) * buffer_scale;
@@ -80,10 +80,8 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 			} else if (net_slot >= 0 && idx == net_slot) {
 				// Net tile: width may differ from icon_size
 				free(tile);
-				int tile_w =
-					(app_config.net_tile_width > 0 ? app_config.net_tile_width :
-													 app_config.icon_size) *
-					buffer_scale;
+				int along_px = get_slot_size(idx, is_vertical) * buffer_scale;
+				int tile_w = is_vertical ? icon_size : along_px;
 				int tile_h = icon_size;
 				tile = malloc(tile_w * tile_h * 4);
 				if (!tile)
@@ -91,10 +89,10 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 				net_draw_tile(tile, tile_w, tile_h, &app_config,
 					get_corner_flags(idx));
 				if (is_vertical) {
-					for (int ty = 0; ty < tile_w; ty++) {
-						uint32_t *src = tile + ty * tile_h;
+					for (int ty = 0; ty < tile_h; ty++) {
+						uint32_t *src = tile + ty * tile_w;
 						uint32_t *dst = pixels + (offset + ty) * phys_width;
-						memcpy(dst, src, tile_h * 4);
+						memcpy(dst, src, tile_w * 4);
 					}
 				} else {
 					for (int ty = 0; ty < tile_h; ty++) {
@@ -105,17 +103,17 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 				}
 				free(tile);
 				tile = NULL;
-				wl_surface_attach(surface, buffer, 0, 0);
-				wl_surface_damage(surface, 0, 0, surf_width, surf_height);
-				wl_surface_commit(surface);
+				if (surface && buffer) {
+					wl_surface_attach(surface, buffer, 0, 0);
+					wl_surface_damage(surface, 0, 0, surf_width, surf_height);
+					wl_surface_commit(surface);
+				}
 				goto done_leave;
 			} else if (date_slot >= 0 && idx == date_slot) {
 				// Redraw date tile — uses tile_width × icon_size, not a square
 				free(tile);
-				int tile_w = (app_config.date_tile_width > 0 ?
-									 app_config.date_tile_width :
-									 app_config.icon_size) *
-					buffer_scale;
+				int along_px = get_slot_size(idx, is_vertical) * buffer_scale;
+				int tile_w = is_vertical ? icon_size : along_px;
 				int tile_h = icon_size;
 				tile = malloc(tile_w * tile_h * 4);
 				if (!tile)
@@ -123,10 +121,10 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 				date_draw_tile(tile, tile_w, tile_h, &app_config,
 					get_corner_flags(idx));
 				if (is_vertical) {
-					for (int ty = 0; ty < tile_w; ty++) {
-						uint32_t *src = tile + ty * tile_h;
+					for (int ty = 0; ty < tile_h; ty++) {
+						uint32_t *src = tile + ty * tile_w;
 						uint32_t *dst = pixels + (offset + ty) * phys_width;
-						memcpy(dst, src, tile_h * 4);
+						memcpy(dst, src, tile_w * 4);
 					}
 				} else {
 					for (int ty = 0; ty < tile_h; ty++) {
@@ -137,9 +135,11 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 				}
 				free(tile);
 				tile = NULL;
-				wl_surface_attach(surface, buffer, 0, 0);
-				wl_surface_damage(surface, 0, 0, surf_width, surf_height);
-				wl_surface_commit(surface);
+				if (surface && buffer) {
+					wl_surface_attach(surface, buffer, 0, 0);
+					wl_surface_damage(surface, 0, 0, surf_width, surf_height);
+					wl_surface_commit(surface);
+				}
 				goto done_leave;
 			} else if (app_config.show_sysinfo &&
 				idx == get_sysinfo_slot_index()) {
@@ -147,10 +147,10 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 				if (verbose)
 					printf("[DBG] pointer leave sysinfo widget\n");
 				free(tile);
-				int tile_w = (app_config.sysinfo_tile_width > 0 ?
-									 app_config.sysinfo_tile_width :
-									 app_config.icon_size) *
+				int along_px =
+					get_slot_size(get_sysinfo_slot_index(), is_vertical) *
 					buffer_scale;
+				int tile_w = is_vertical ? icon_size : along_px;
 				int tile_h = icon_size;
 				tile = malloc(tile_w * tile_h * 4);
 				if (!tile)
@@ -158,10 +158,10 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 				sysinfo_draw_tile(tile, tile_w, tile_h, &app_config,
 					get_corner_flags(idx));
 				if (is_vertical) {
-					for (int ty = 0; ty < tile_w; ty++) {
-						uint32_t *src = tile + ty * tile_h;
+					for (int ty = 0; ty < tile_h; ty++) {
+						uint32_t *src = tile + ty * tile_w;
 						uint32_t *dst = pixels + (offset + ty) * phys_width;
-						memcpy(dst, src, tile_h * 4);
+						memcpy(dst, src, tile_w * 4);
 					}
 				} else {
 					for (int ty = 0; ty < tile_h; ty++) {
@@ -172,9 +172,11 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 				}
 				free(tile);
 				tile = NULL;
-				wl_surface_attach(surface, buffer, 0, 0);
-				wl_surface_damage(surface, 0, 0, surf_width, surf_height);
-				wl_surface_commit(surface);
+				if (surface && buffer) {
+					wl_surface_attach(surface, buffer, 0, 0);
+					wl_surface_damage(surface, 0, 0, surf_width, surf_height);
+					wl_surface_commit(surface);
+				}
 				goto done_leave;
 			} else if (SLOT_TO_APP(idx) >= 0 &&
 				SLOT_TO_APP(idx) < app_config.count &&
@@ -202,9 +204,11 @@ pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 			}
 			free(tile);
 
-			wl_surface_attach(surface, buffer, 0, 0);
-			wl_surface_damage(surface, 0, 0, surf_width, surf_height);
-			wl_surface_commit(surface);
+			if (surface && buffer) {
+				wl_surface_attach(surface, buffer, 0, 0);
+				wl_surface_damage(surface, 0, 0, surf_width, surf_height);
+				wl_surface_commit(surface);
+			}
 		}
 	}
 done_leave:
@@ -236,7 +240,7 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 	if (icon_index != last_hovered_icon) {
 		// In HOVER mode, repaint the affected icon tiles to add/remove
 		// the label
-		if (app_config.label_mode == LABEL_MODE_HOVER && buffer) {
+		if (app_config.label_mode == LABEL_MODE_HOVER && surface && buffer) {
 			int icon_size = app_config.icon_size * buffer_scale;
 			int date_slot = get_date_slot_index();
 			int volume_slot = get_volume_slot_index();
@@ -248,12 +252,14 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 				if (idx < 0)
 					continue;
 
-				int offset = get_offset_for_icon(idx);
+				int offset = get_offset_for_icon(idx) * buffer_scale;
 
 				uint32_t *tile = malloc(icon_size * icon_size * 4);
 				if (!tile)
 					continue;
 				memset(tile, 0, icon_size * icon_size * 4);
+
+				int sysinfo_slot = get_sysinfo_slot_index();
 
 				if (app_config.show_volume && idx == volume_slot) {
 					// Volume slot
@@ -270,13 +276,12 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 							app_config.label_color);
 					}
 				} else if (net_slot >= 0 && idx == net_slot) {
-					// Net tile: fixed size, display-only (no hover label)
+					// Net tile: display-only (no hover label)
 					free(tile);
 					tile = NULL;
-					int tile_w = (app_config.net_tile_width > 0 ?
-										 app_config.net_tile_width :
-										 app_config.icon_size) *
-						buffer_scale;
+					int along_px =
+						get_slot_size(idx, is_vertical) * buffer_scale;
+					int tile_w = is_vertical ? icon_size : along_px;
 					int tile_h = icon_size;
 					uint32_t *ntile = malloc(tile_w * tile_h * 4);
 					if (!ntile)
@@ -284,10 +289,10 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 					net_draw_tile(ntile, tile_w, tile_h, &app_config,
 						get_corner_flags(idx));
 					if (is_vertical) {
-						for (int ty = 0; ty < tile_w; ty++) {
-							uint32_t *src = ntile + ty * tile_h;
+						for (int ty = 0; ty < tile_h; ty++) {
+							uint32_t *src = ntile + ty * tile_w;
 							uint32_t *dst = pixels + (offset + ty) * phys_width;
-							memcpy(dst, src, tile_h * 4);
+							memcpy(dst, src, tile_w * 4);
 						}
 					} else {
 						for (int ty = 0; ty < tile_h; ty++) {
@@ -299,14 +304,13 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 					free(ntile);
 					continue;
 				} else if (date_slot >= 0 && idx == date_slot) {
-					// Date tile: width may differ from icon_size, height =
-					// icon_size
+					// Date tile: height = icon_size, width depends on
+					// orientation
 					free(tile);
 					tile = NULL;
-					int tile_w = (app_config.date_tile_width > 0 ?
-										 app_config.date_tile_width :
-										 app_config.icon_size) *
-						buffer_scale;
+					int along_px =
+						get_slot_size(idx, is_vertical) * buffer_scale;
+					int tile_w = is_vertical ? icon_size : along_px;
 					int tile_h = icon_size;
 					uint32_t *dtile = malloc(tile_w * tile_h * 4);
 					if (!dtile)
@@ -314,10 +318,10 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 					date_draw_tile(dtile, tile_w, tile_h, &app_config,
 						get_corner_flags(idx));
 					if (is_vertical) {
-						for (int ty = 0; ty < tile_w; ty++) {
-							uint32_t *src = dtile + ty * tile_h;
+						for (int ty = 0; ty < tile_h; ty++) {
+							uint32_t *src = dtile + ty * tile_w;
 							uint32_t *dst = pixels + (offset + ty) * phys_width;
-							memcpy(dst, src, tile_h * 4);
+							memcpy(dst, src, tile_w * 4);
 						}
 					} else {
 						for (int ty = 0; ty < tile_h; ty++) {
@@ -327,6 +331,34 @@ pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 						}
 					}
 					free(dtile);
+					continue;
+				} else if (sysinfo_slot >= 0 && idx == sysinfo_slot) {
+					// Sysinfo tile: display-only (no hover label)
+					free(tile);
+					tile = NULL;
+					int along_px =
+						get_slot_size(idx, is_vertical) * buffer_scale;
+					int tile_w = is_vertical ? icon_size : along_px;
+					int tile_h = icon_size;
+					uint32_t *stile = malloc(tile_w * tile_h * 4);
+					if (!stile)
+						continue;
+					sysinfo_draw_tile(stile, tile_w, tile_h, &app_config,
+						get_corner_flags(idx));
+					if (is_vertical) {
+						for (int ty = 0; ty < tile_h; ty++) {
+							uint32_t *src = stile + ty * tile_w;
+							uint32_t *dst = pixels + (offset + ty) * phys_width;
+							memcpy(dst, src, tile_w * 4);
+						}
+					} else {
+						for (int ty = 0; ty < tile_h; ty++) {
+							uint32_t *src = stile + ty * tile_w;
+							uint32_t *dst = pixels + ty * phys_width + offset;
+							memcpy(dst, src, tile_w * 4);
+						}
+					}
+					free(stile);
 					continue;
 				} else {
 					// Regular app slot
