@@ -296,9 +296,6 @@ volume_adjust(int up)
 static void
 volume_launch_mixer(const char *exec_cmd)
 {
-	if (!exec_cmd || !exec_cmd[0])
-		exec_cmd = "foot -e alsamixer";
-
 	if (verbose)
 		printf("[VOL] Right click → %s\n", exec_cmd);
 
@@ -324,6 +321,11 @@ volume_handle_click(uint32_t button, const char *exec_cmd)
 			printf("[VOL] Left click → toggle mute\n");
 		volume_toggle_mute();
 	} else if (button == BTN_RIGHT) {
+		if (!exec_cmd || !exec_cmd[0]) {
+			if (verbose)
+				printf("[VOL] Right click ignored (exec not configured)\n");
+			return;
+		}
 		volume_launch_mixer(exec_cmd);
 	}
 }

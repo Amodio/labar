@@ -581,6 +581,8 @@ pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 		if (button == BTN_LEFT && state == WL_POINTER_BUTTON_STATE_PRESSED) {
 			if (app_config.sysinfo_exec && app_config.sysinfo_exec[0])
 				launch_command(app_config.sysinfo_exec);
+			else if (verbose)
+				printf("[SYS] Left click ignored (exec not configured)\n");
 		}
 	} else if (date_slot >= 0 && icon_index == date_slot) {
 		if (verbose) {

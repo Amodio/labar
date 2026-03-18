@@ -1367,8 +1367,7 @@ write_default_config(DesktopEntry **entries, int count)
 	}
 
 	fprintf(fp, "\n[widget-volume]\n");
-	fprintf(fp,
-		"# exec: command to run on right-click (default: foot -e alsamixer)\n");
+	fprintf(fp, "# exec: command to run on right-click (empty to disable)\n");
 	fprintf(fp, "exec=foot -e alsamixer\n");
 	fprintf(fp, "\n[widget-date]\n");
 	fprintf(fp, "# Date line (upper half of the tile)\n");

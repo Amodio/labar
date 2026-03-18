@@ -795,9 +795,8 @@ write_config(CfgWin *w)
 			fprintf(fp, "\n[widget-volume]\n");                                \
 			fprintf(fp,                                                        \
 				"# exec: command to run on right-click"                        \
-				" (default: foot -e alsamixer)\n");                            \
-			fprintf(fp, "exec=%s\n",                                           \
-				c->volume_exec ? c->volume_exec : "foot -e alsamixer");        \
+				" (empty to disable)\n");                                      \
+			fprintf(fp, "exec=%s\n", c->volume_exec ? c->volume_exec : "");    \
 		} /* sysinfo (wid==4) */                                               \
 		else if ((wid) == 4) {                                                 \
 			fprintf(fp, "\n[widget-sysinfo]\n");                               \
@@ -818,8 +817,7 @@ write_config(CfgWin *w)
 			fprintf(fp,                                                        \
 				"# exec: command to run on left-click"                         \
 				" (empty to disable)\n");                                      \
-			fprintf(fp, "exec=%s\n",                                           \
-				c->sysinfo_exec ? c->sysinfo_exec : "foot -e btop");           \
+			fprintf(fp, "exec=%s\n", c->sysinfo_exec ? c->sysinfo_exec : "");  \
 		}                                                                      \
 	} while (0)
 
@@ -1437,7 +1435,7 @@ make_widget_row(CfgWin *w, int pos)
 		gtk_editable_set_text(GTK_EDITABLE(w->volume_exec_entry),
 			w->cfg.volume_exec ? w->cfg.volume_exec : "");
 		gtk_entry_set_placeholder_text(w->volume_exec_entry,
-			"foot -e alsamixer");
+			"empty to disable");
 		gtk_widget_set_hexpand(GTK_WIDGET(w->volume_exec_entry), TRUE);
 		grid_row(GTK_GRID(sg), r++,
 			"Right-click command:", GTK_WIDGET(w->volume_exec_entry));
@@ -1482,7 +1480,8 @@ make_widget_row(CfgWin *w, int pos)
 		w->sysinfo_exec_entry = GTK_ENTRY(gtk_entry_new());
 		gtk_editable_set_text(GTK_EDITABLE(w->sysinfo_exec_entry),
 			w->cfg.sysinfo_exec ? w->cfg.sysinfo_exec : "");
-		gtk_entry_set_placeholder_text(w->sysinfo_exec_entry, "foot -e btop");
+		gtk_entry_set_placeholder_text(w->sysinfo_exec_entry,
+			"empty to disable");
 		gtk_widget_set_hexpand(GTK_WIDGET(w->sysinfo_exec_entry), TRUE);
 		grid_row(GTK_GRID(sg), r++,
 			"Left-click command:", GTK_WIDGET(w->sysinfo_exec_entry));
