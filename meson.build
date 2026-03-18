@@ -1,10 +1,9 @@
 project('labar', 'c',
-  version: '0.9.0',
+  version: '1.0.0',
   default_options: [
     'prefix=/usr',
     'c_std=c11',
     'warning_level=3',
-    #'warning_level=everything',
     'strip=true'
     ]
 )
@@ -38,7 +37,7 @@ endif
 # Build wayland-protocols code (generated from XML)
 subdir('protocols')
 
-# Documentation
+# Documentation (man page)
 subdir('doc')
 
 # Volume icons installed to /usr/share/pixmaps/labar/ by default
