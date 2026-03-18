@@ -32,6 +32,9 @@ void
 pointer_enter(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 	struct wl_surface *surface, wl_fixed_t surface_x, wl_fixed_t surface_y)
 {
+	(void)data;
+	(void)wl_pointer;
+	(void)serial;
 	pointer_surface = surface;
 	if (verbose >= 2)
 		printf("[DBG²] Pointer entered surface at (%.2f, %.2f)\n",
@@ -42,6 +45,9 @@ void
 pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 	struct wl_surface *surface)
 {
+	(void)data;
+	(void)wl_pointer;
+	(void)serial;
 	(void)surface;
 	pointer_surface = NULL;
 	if (verbose >= 2)
@@ -210,6 +216,9 @@ void
 pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 	wl_fixed_t surface_x, wl_fixed_t surface_y)
 {
+	(void)data;
+	(void)wl_pointer;
+	(void)time;
 	current_pointer_x = wl_fixed_to_double(surface_x);
 	current_pointer_y = wl_fixed_to_double(surface_y);
 
@@ -457,6 +466,10 @@ void
 pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 	uint32_t time, uint32_t button, uint32_t state)
 {
+	(void)data;
+	(void)wl_pointer;
+	(void)serial;
+	(void)time;
 	// Determine which button was clicked
 	const char *button_name;
 	switch (button) {
@@ -559,6 +572,9 @@ void
 pointer_axis(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 	uint32_t axis, wl_fixed_t value)
 {
+	(void)data;
+	(void)wl_pointer;
+	(void)time;
 	double scroll_value = wl_fixed_to_double(value);
 	const char *direction = "";
 	int icon_index = -1;
@@ -615,6 +631,8 @@ pointer_axis(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 void
 pointer_frame(void *data, struct wl_pointer *wl_pointer)
 {
+	(void)data;
+	(void)wl_pointer;
 	// End of pointer event frame
 }
 
@@ -622,6 +640,9 @@ void
 pointer_axis_source(void *data, struct wl_pointer *wl_pointer,
 	uint32_t axis_source)
 {
+	(void)data;
+	(void)wl_pointer;
+	(void)axis_source;
 	// Axis source event (wheel, finger, continuous, etc.)
 }
 
@@ -629,6 +650,10 @@ void
 pointer_axis_stop(void *data, struct wl_pointer *wl_pointer, uint32_t time,
 	uint32_t axis)
 {
+	(void)data;
+	(void)wl_pointer;
+	(void)time;
+	(void)axis;
 	// Axis stop event
 }
 
@@ -636,6 +661,8 @@ void
 pointer_axis_discrete(void *data, struct wl_pointer *wl_pointer, uint32_t axis,
 	int32_t discrete)
 {
+	(void)data;
+	(void)wl_pointer;
 	// Discrete axis event (for wheel/stepped scrolling)
 	const char *direction = "";
 	int icon_index = -1;
@@ -704,6 +731,7 @@ static const struct wl_pointer_listener pointer_listener = {
 void
 seat_capabilities(void *data, struct wl_seat *seat, uint32_t capabilities)
 {
+	(void)data;
 	if ((capabilities & WL_SEAT_CAPABILITY_POINTER) && !pointer) {
 		pointer = wl_seat_get_pointer(seat);
 		wl_pointer_add_listener(pointer, &pointer_listener, NULL);
@@ -715,6 +743,8 @@ seat_capabilities(void *data, struct wl_seat *seat, uint32_t capabilities)
 void
 seat_name(void *data, struct wl_seat *seat, const char *name)
 {
+	(void)data;
+	(void)seat;
 	if (verbose)
 		printf("[DBG] Seat name: %s\n", name);
 }

@@ -875,6 +875,7 @@ static void
 layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 	uint32_t width, uint32_t height)
 {
+	(void)data;
 	// Compositor provides LOGICAL dimensions; we allocate a physical buffer
 	// that is buffer_scale times larger in each dimension.
 	// For fractional scaling the physical buffer is ceil(scale) × logical,
@@ -1322,6 +1323,8 @@ rebuild_layer_surface(void)
 static void
 layer_closed(void *data, struct zwlr_layer_surface_v1 *surf)
 {
+	(void)data;
+	(void)surf;
 	if (verbose)
 		printf("[DBG] Layer surface closed by compositor\n");
 	// registry_remove may have already called teardown_layer_surface();
@@ -1372,6 +1375,7 @@ static void
 xdg_output_logical_position(void *data, struct zxdg_output_v1 *xdg_out,
 	int32_t x, int32_t y)
 {
+	(void)xdg_out;
 	struct output_info *oi = (struct output_info *)data;
 	if (!oi)
 		return;
@@ -1383,6 +1387,7 @@ static void
 xdg_output_logical_size(void *data, struct zxdg_output_v1 *xdg_out, int32_t w,
 	int32_t h)
 {
+	(void)xdg_out;
 	struct output_info *oi = (struct output_info *)data;
 	if (!oi)
 		return;
@@ -1393,6 +1398,7 @@ xdg_output_logical_size(void *data, struct zxdg_output_v1 *xdg_out, int32_t w,
 static void
 xdg_output_done(void *data, struct zxdg_output_v1 *xdg_out)
 {
+	(void)xdg_out;
 	struct output_info *oi = (struct output_info *)data;
 	if (!oi)
 		return;
@@ -1406,6 +1412,7 @@ xdg_output_done(void *data, struct zxdg_output_v1 *xdg_out)
 static void
 xdg_output_name(void *data, struct zxdg_output_v1 *xdg_out, const char *name)
 {
+	(void)xdg_out;
 	struct output_info *oi = (struct output_info *)data;
 	if (!oi)
 		return;
@@ -1418,6 +1425,7 @@ static void
 xdg_output_description(void *data, struct zxdg_output_v1 *xdg_out,
 	const char *description)
 {
+	(void)xdg_out;
 	struct output_info *oi = (struct output_info *)data;
 	if (!oi)
 		return;
@@ -1470,6 +1478,16 @@ output_geometry(void *data, struct wl_output *wl_output, int32_t x, int32_t y,
 	int32_t physical_width, int32_t physical_height, int32_t subpixel,
 	const char *make, const char *model, int32_t transform)
 {
+	(void)data;
+	(void)wl_output;
+	(void)x;
+	(void)y;
+	(void)physical_width;
+	(void)physical_height;
+	(void)subpixel;
+	(void)make;
+	(void)model;
+	(void)transform;
 	// Not needed for scale detection
 }
 
@@ -1477,12 +1495,20 @@ static void
 output_mode(void *data, struct wl_output *wl_output, uint32_t flags,
 	int32_t width, int32_t height, int32_t refresh)
 {
+	(void)data;
+	(void)wl_output;
+	(void)flags;
+	(void)width;
+	(void)height;
+	(void)refresh;
 	// Not needed for scale detection
 }
 
 static void
 output_done(void *data, struct wl_output *wl_output)
 {
+	(void)data;
+	(void)wl_output;
 	// All output properties delivered; buffer_scale is already applied.
 	// If a layer surface teardown is pending (output came back after removal),
 	// now is the right time to rebuild.
@@ -1551,6 +1577,8 @@ trigger_redraw(void)
 static void
 output_scale(void *data, struct wl_output *wl_output, int32_t factor)
 {
+	(void)data;
+	(void)wl_output;
 	// When fractional scale protocol is active, ignore integer scale events
 	// — the fractional listener is authoritative.
 	if (using_fractional_scale)
@@ -1581,6 +1609,8 @@ static const struct wl_output_listener output_listener = {
 static void
 surface_enter(void *data, struct wl_surface *surf, struct wl_output *entered)
 {
+	(void)data;
+	(void)surf;
 	if (verbose >= 2) {
 		struct output_info *oi = find_output_info(entered);
 		if (oi && oi->name[0])
@@ -1600,6 +1630,8 @@ surface_enter(void *data, struct wl_surface *surf, struct wl_output *entered)
 static void
 surface_leave(void *data, struct wl_surface *surf, struct wl_output *left)
 {
+	(void)data;
+	(void)surf;
 	if (verbose >= 2)
 		printf("[DBG²] Surface left output %p\n", (void *)left);
 }
@@ -1616,6 +1648,8 @@ static void
 fractional_scale_preferred(void *data, struct wp_fractional_scale_v1 *obj,
 	uint32_t scale_120)
 {
+	(void)data;
+	(void)obj;
 	// scale_120 is the scale multiplied by 120 (e.g. 150% → 180, 200% → 240)
 	double new_scale = scale_120 / 120.0;
 	if (verbose)
@@ -1644,6 +1678,8 @@ static void
 registry_add(void *data, struct wl_registry *reg, uint32_t name,
 	const char *interface, uint32_t version)
 {
+	(void)data;
+	(void)version;
 	if (strcmp(interface, wl_compositor_interface.name) == 0) {
 		compositor = wl_registry_bind(reg, name, &wl_compositor_interface, 4);
 	} else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
@@ -1696,6 +1732,8 @@ registry_add(void *data, struct wl_registry *reg, uint32_t name,
 static void
 registry_remove(void *data, struct wl_registry *reg, uint32_t name)
 {
+	(void)data;
+	(void)reg;
 	if (verbose >= 2)
 		printf("[DBG²] Global object removed: name=%u\n", name);
 
