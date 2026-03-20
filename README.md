@@ -65,6 +65,13 @@ Compositors based on [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots)
 | `alsa-lib` | Volume widget |
 | `gtk4` *(optional)* | Graphical config editor (`--config`) |
 
+On debian:
+```bash
+sudo apt install meson pkgconf cmake libwayland-dev wayland-protocols \
+libcairo2-dev librsvg2-dev libasound2-dev scdoc
+sudo apt install libgtk-4-dev # if you want the --config option
+```
+
 ## Installation
 
 ```bash

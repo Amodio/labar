@@ -39,7 +39,7 @@ endforeach
 wl_protocols_lib = static_library(
   'labar_protocols',
   wl_protocols_src + wl_protocols_headers,
-  dependencies: [ wayland_client ],
+  dependencies: [ dependency('wayland-client') ],
 )
 
 wl_protocols = declare_dependency(
