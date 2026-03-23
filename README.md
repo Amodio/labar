@@ -103,11 +103,7 @@ available for the `output=` key.
 
 Issues and pull requests are welcome, as well as packaging for distributions!
 
-To install the pre-commit hook (coding style check) locally, run once:
+To install the pre-commit hook locally (coding style checks), run once:
 ```bash
 ./scripts/install-hooks.sh
 ```
-
-## Ideas
- * volume widget: make `alsa-lib-dev` optional, support `pulseaudio`
-and/or `pipewire`.
