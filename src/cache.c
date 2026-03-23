@@ -29,7 +29,7 @@ static int surface_cache_capacity = 0;
 void
 cache_init(void)
 {
-	surface_cache_capacity = 32;
+	surface_cache_capacity = 8;
 	surface_cache = malloc(surface_cache_capacity * sizeof(DecodedSurface));
 	surface_cache_count = 0;
 	if (verbose >= 3)

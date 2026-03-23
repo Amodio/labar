@@ -103,6 +103,7 @@ struct wl_surface *surface;
 struct zwlr_layer_surface_v1 *layer_surface;
 struct wl_buffer *buffer;
 uint32_t *pixels; // Pointer into the SHM mapping
+size_t pixels_size; // Size of the SHM mapping in bytes (for munmap)
 
 // Surface dimensions in LOGICAL pixels — updated on configure events.
 // The compositor always talks in logical pixels; we multiply by buffer_scale
@@ -449,7 +450,7 @@ get_offset_for_icon(int icon_index)
 // Returns a wl_buffer bound to the SHM pool.
 // ---------------------------------------------------------------------------
 static struct wl_buffer *
-create_shm_buffer(int width, int height, uint32_t **out_data)
+create_shm_buffer(int width, int height, uint32_t **out_data, size_t *out_size)
 {
 	int stride = width * 4; // 4 bytes per pixel (ARGB8888)
 	int size = stride * height;
@@ -474,6 +475,7 @@ create_shm_buffer(int width, int height, uint32_t **out_data)
 		exit(1);
 	}
 	*out_data = (uint32_t *)map;
+	*out_size = size;
 
 	// Create a Wayland SHM pool from the fd, then carve out a single buffer
 	struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, size);
@@ -889,7 +891,8 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 
 	if (!buffer) {
 		// Allocate SHM buffer at physical (HiDPI) resolution
-		buffer = create_shm_buffer(phys_width, phys_height, &pixels);
+		buffer =
+			create_shm_buffer(phys_width, phys_height, &pixels, &pixels_size);
 
 		// Clear the entire buffer to transparent
 		memset(pixels, 0, phys_width * phys_height * 4);
@@ -926,29 +929,23 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 					draw_icon(app_config.apps[i]->icon, tile_data, icon_size,
 						icon_size);
 
-					// Draw the app name as a text overlay on the icon
-					uint32_t *text_overlay = malloc(icon_size * icon_size * 4);
-					memcpy(text_overlay, tile_data, icon_size * icon_size * 4);
-
-					free(tile_data);
-
 					// Draw the label only when label_mode is ALWAYS
 					if (app_config.label_mode == LABEL_MODE_ALWAYS) {
 						int baseline =
 							icon_size - app_config.label_offset * buffer_scale;
-						draw_text(text_overlay, icon_size, icon_size,
+						draw_text(tile_data, icon_size, icon_size,
 							app_config.apps[i]->name, baseline,
 							app_config.label_color);
 					}
 
-					// Blit the text overlay onto the main buffer
+					// Blit the tile onto the main buffer
 					for (int ty = 0; ty < icon_size; ty++) {
-						uint32_t *src = text_overlay + (ty * icon_size);
+						uint32_t *src = tile_data + (ty * icon_size);
 						uint32_t *dst = pixels + ((y_offset + ty) * phys_width);
 						memcpy(dst, src, icon_size * 4);
 					}
 
-					free(text_overlay);
+					free(tile_data);
 				}
 			}
 
@@ -1040,29 +1037,23 @@ layer_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 					draw_icon(app_config.apps[i]->icon, tile_data, icon_size,
 						icon_size);
 
-					// Draw the app name as a text overlay on the icon
-					uint32_t *text_overlay = malloc(icon_size * icon_size * 4);
-					memcpy(text_overlay, tile_data, icon_size * icon_size * 4);
-
-					free(tile_data);
-
 					// Draw the label only when label_mode is ALWAYS
 					if (app_config.label_mode == LABEL_MODE_ALWAYS) {
 						int baseline =
 							icon_size - app_config.label_offset * buffer_scale;
-						draw_text(text_overlay, icon_size, icon_size,
+						draw_text(tile_data, icon_size, icon_size,
 							app_config.apps[i]->name, baseline,
 							app_config.label_color);
 					}
 
-					// Blit the text overlay onto the main buffer
+					// Blit the tile onto the main buffer
 					for (int ty = 0; ty < icon_size; ty++) {
-						uint32_t *src = text_overlay + (ty * icon_size);
+						uint32_t *src = tile_data + (ty * icon_size);
 						uint32_t *dst = pixels + (ty * phys_width) + x_offset;
 						memcpy(dst, src, icon_size * 4);
 					}
 
-					free(text_overlay);
+					free(tile_data);
 				}
 			}
 
@@ -1203,6 +1194,10 @@ teardown_layer_surface(void)
 		layer_surface = NULL;
 	}
 	if (buffer) {
+		if (pixels && pixels_size) {
+			munmap(pixels, pixels_size);
+			pixels_size = 0;
+		}
 		wl_buffer_destroy(buffer);
 		buffer = NULL;
 		pixels = NULL;
@@ -1562,6 +1557,10 @@ trigger_redraw(void)
 
 	// Destroy the stale buffer; layer_configure will create a new one.
 	if (buffer) {
+		if (pixels && pixels_size) {
+			munmap(pixels, pixels_size);
+			pixels_size = 0;
+		}
 		wl_buffer_destroy(buffer);
 		buffer = NULL;
 		pixels = NULL;
@@ -2224,6 +2223,7 @@ main(int argc, char *argv[])
 
 	cache_free();
 	free_config(&app_config);
+	cairo_debug_reset_static_data();
 	wl_display_disconnect(display);
 	return 0;
 }
