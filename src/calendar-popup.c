@@ -66,6 +66,7 @@ static struct {
 	struct zwlr_layer_surface_v1 *layer_surf;
 	struct wl_buffer *buffer;
 	uint32_t *pixels;
+	size_t pixels_size; // byte length of the mmap backing pop.pixels
 	int w, h;
 	int phys_w, phys_h;
 	int open;
@@ -288,7 +289,7 @@ draw_calendar(uint32_t *pixels, int pw, int ph)
 // SHM buffer
 // ---------------------------------------------------------------------------
 static struct wl_buffer *
-make_buffer(int pw, int ph, uint32_t **out)
+make_buffer(int pw, int ph, uint32_t **out, size_t *out_size)
 {
 	int size = pw * ph * 4;
 	int fd = memfd_create("cal-popup", 0);
@@ -304,6 +305,7 @@ make_buffer(int pw, int ph, uint32_t **out)
 		return NULL;
 	}
 	*out = (uint32_t *)m;
+	*out_size = size;
 	struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, size);
 	struct wl_buffer *buf = wl_shm_pool_create_buffer(pool, 0, pw, ph, pw * 4,
 		WL_SHM_FORMAT_ARGB8888);
@@ -329,12 +331,17 @@ pop_configure(void *data, struct zwlr_layer_surface_v1 *surf, uint32_t serial,
 	pop.phys_h = pop.h * buffer_scale;
 
 	if (pop.buffer) {
+		if (pop.pixels && pop.pixels_size) {
+			munmap(pop.pixels, pop.pixels_size);
+			pop.pixels = NULL;
+			pop.pixels_size = 0;
+		}
 		wl_buffer_destroy(pop.buffer);
 		pop.buffer = NULL;
-		pop.pixels = NULL;
 	}
 
-	pop.buffer = make_buffer(pop.phys_w, pop.phys_h, &pop.pixels);
+	pop.buffer =
+		make_buffer(pop.phys_w, pop.phys_h, &pop.pixels, &pop.pixels_size);
 	if (!pop.buffer)
 		return;
 
@@ -374,9 +381,13 @@ static void
 pop_destroy(void)
 {
 	if (pop.buffer) {
+		if (pop.pixels && pop.pixels_size) {
+			munmap(pop.pixels, pop.pixels_size);
+			pop.pixels = NULL;
+			pop.pixels_size = 0;
+		}
 		wl_buffer_destroy(pop.buffer);
 		pop.buffer = NULL;
-		pop.pixels = NULL;
 	}
 	if (pop.layer_surf) {
 		zwlr_layer_surface_v1_destroy(pop.layer_surf);
