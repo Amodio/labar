@@ -102,7 +102,7 @@ static int n_outputs = 0;
 struct wl_surface *surface;
 struct zwlr_layer_surface_v1 *layer_surface;
 struct wl_buffer *buffer;
-uint32_t *pixels; // Pointer into the SHM mapping
+uint32_t *pixels;	// Pointer into the SHM mapping
 size_t pixels_size; // Size of the SHM mapping in bytes (for munmap)
 
 // Surface dimensions in LOGICAL pixels — updated on configure events.
