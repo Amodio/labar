@@ -72,7 +72,16 @@ parse_exec(const char *exec, int *argc_out)
 			arg = strndup(start, p - start);
 		}
 
-		argv = realloc(argv, sizeof(char *) * (argc + 1));
+		char **tmp = realloc(argv, sizeof(char *) * (argc + 1));
+		if (!tmp) {
+			free(arg);
+			for (int j = 0; j < argc; j++)
+				free(argv[j]);
+			free(argv);
+			*argc_out = 0;
+			return NULL;
+		}
+		argv = tmp;
 		argv[argc++] = arg;
 	}
 
@@ -134,6 +143,9 @@ expand_field_codes(DesktopEntry *app, char ***argvp, int *argcp)
 		// Unknown field code?
 		if (arg[0] == '%' && strlen(arg) == 2) {
 			fprintf(stderr, "Invalid field code: %s\n", arg);
+			for (int j = 0; j < newc; j++)
+				free(newv[j]);
+			free(newv);
 			return -1;
 		}
 
@@ -256,8 +268,12 @@ launch_app(DesktopEntry *app)
 	if (!argv)
 		return;
 
-	if (expand_field_codes(app, &argv, &argc) < 0)
+	if (expand_field_codes(app, &argv, &argc) < 0) {
+		for (int i = 0; i < argc; i++)
+			free(argv[i]);
+		free(argv);
 		return;
+	}
 
 	launch_app_first_fork(app, argv, argc);
 
