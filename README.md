@@ -15,7 +15,7 @@ Now with Wayland replacing X11, I am gladly using
 [labwc](https://labwc.github.io).
 
 [lavalauncher](https://git.sr.ht/~leon_plickat/lavalauncher) is the closest
-dock to my knowledge, but it is discontinued (4 years) and lacks features.
+dock to my knowledge, but it is discontinued (since 2021) and lacks features.
 
 ## Features
 
@@ -24,7 +24,7 @@ dock to my knowledge, but it is discontinued (4 years) and lacks features.
 - CPU/RAM usage widget — live percentages from `/proc/stat` & `/proc/meminfo`
 - Volume widget — ALSA PCM/Master, mute toggle, scroll to adjust
 - Date/time widget — localization, click to open a calendar popup
-- Locale-aware calendar popup — localization, rendered inline via Cairo
+- Calendar popup — localization, rendered inline via Cairo
 - HiDPI — integer scaling via `wl_output.scale`, fractional via
   `wp_fractional_scale_v1`
 - Output selection — pin the bar to a specific monitor by name
@@ -33,25 +33,31 @@ dock to my knowledge, but it is discontinued (4 years) and lacks features.
 
 ## Compatibility
 
-labar requires a Wayland compositor that implements
-[wlr-layer-shell-unstable-v1](
-  https://wayland.app/protocols/wlr-layer-shell-unstable-v1#compositor-support).
 Compositors based on [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots)
-(labwc, Sway, Hyprland, river, etc.) are compatible. GNOME or KDE are not.
+(labwc, Sway, Hyprland, river, etc.) are compatible.
+
+KWin (KDE Plasma) is also compatible, but **[not GNOME](
+https://wayland.app/protocols/wlr-layer-shell-unstable-v1#compositor-support)**.
 
 ### Wayland protocols used
 
-| Protocol | Source |
-|---|---|
-| `xdg-shell` | wayland-protocols stable |
-| `viewporter` | wayland-protocols stable |
-| `fractional-scale-v1` | wayland-protocols staging |
-| `xdg-output-unstable-v1` | wayland-protocols unstable |
-| `wlr-layer-shell-unstable-v1` | wlr-protocols (bundled) |
+| Protocol        | Source         |
+|----------------|----------------|
+| [xdg-shell]    | wayland stable |
+| [viewporter]   | wayland stable |
+| [fractional-scale-v1] | wayland staging |
+| [xdg-output-unstable-v1] | wayland unstable |
+| [wlr-layer-shell-v1] | wlr bundled |
+
+[xdg-shell]: https://wayland.app/protocols/xdg-shell
+[viewporter]: https://wayland.app/protocols/viewporter
+[fractional-scale-v1]: https://wayland.app/protocols/fractional-scale-v1
+[xdg-output-unstable-v1]: https://wayland.app/protocols/xdg-output-unstable-v1
+[wlr-layer-shell-v1]: https://wayland.app/protocols/wlr-layer-shell-unstable-v1
 
 > **Note:** a [merge request](
   https://gitlab.freedesktop.org/wayland/wayland-protocols/-/merge_requests/28)
-> has been open since 2020 to include `wlr-layer-shell` in the upstream
+> has been open (since 2020!) to include `wlr-layer-shell` in the upstream
 > wayland-protocols repository.
 
 ## Dependencies
@@ -65,7 +71,7 @@ Compositors based on [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots)
 | `alsa-lib` | Volume widget |
 | `gtk4` *(optional)* | Graphical config editor (`--config`) |
 
-On debian:
+On Debian:
 ```bash
 sudo apt install meson pkgconf cmake libwayland-dev wayland-protocols \
 libcairo2-dev librsvg2-dev libasound2-dev scdoc
@@ -80,7 +86,7 @@ meson setup build/
 sudo meson install -C build/
 ```
 
-The GTK4 config editor is built automatically if `gtk4` is found.
+The GTK4 config editor (`--config`) is built automatically if `gtk4` is found.
 
 ## Usage
 
@@ -95,15 +101,13 @@ labar [OPTIONS]
 | `-c`, `--config` | Open the graphical config editor |
 | `-V`, `--version` | Print version and exit |
 
-The configuration file is read from `~/.config/labar.cfg` and is created with
-sensible defaults on first run. Run `labar -v` to see which output names are
-available for the `output=` key.
+The configuration file is read from `~/.config/labar.cfg`.
 
 ## Contributing
 
 Issues and pull requests are welcome, as well as packaging for distributions!
 
-To install the pre-commit hook locally (coding style checks), run once:
+To use the pre-commit hook locally (coding style checks), run once:
 ```bash
 ./scripts/install-hooks.sh
 ```
