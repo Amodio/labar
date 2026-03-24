@@ -90,7 +90,7 @@ The GTK4 config editor (`--config`) is built automatically if `gtk4` is found.
 
 ## Usage
 
-```
+```bash
 labar [OPTIONS]
 ```
 
@@ -102,6 +102,10 @@ labar [OPTIONS]
 | `-V`, `--version` | Print version and exit |
 
 The configuration file is read from `~/.config/labar.cfg`.
+You can set your `LC_TIME` env var to a value from `locale -a` like that:
+```bash
+LC_TIME=fr_FR.UTF-8 labar
+```
 
 ## Contributing
 
