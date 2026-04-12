@@ -134,11 +134,11 @@ int last_hovered_icon = -1;
 // ---------------------------------------------------------------------------
 // Widget ID constants — must match widget_order[] values in config.h
 // ---------------------------------------------------------------------------
-#define WIDGET_ID_NET 0
-#define WIDGET_ID_VOLUME 1
-#define WIDGET_ID_DATE 2
-#define WIDGET_ID_APPS 3 // sentinel: marks the app-icons block position
-#define WIDGET_ID_SYSINFO 4
+#define WIDGET_ID_SYSINFO 0
+#define WIDGET_ID_NET 1
+#define WIDGET_ID_APPS 2 // sentinel: marks the app-icons block position
+#define WIDGET_ID_VOLUME 3
+#define WIDGET_ID_DATE 4
 
 static int
 widget_enabled(int id)
@@ -1318,6 +1318,10 @@ rebuild_layer_surface(void)
 	zwlr_layer_surface_v1_set_size(layer_surface, bar_width, bar_height_actual);
 	zwlr_layer_surface_v1_set_exclusive_zone(layer_surface,
 		app_config.exclusive_zone);
+	{
+		int bs = app_config.border_space;
+		zwlr_layer_surface_v1_set_margin(layer_surface, bs, bs, bs, bs);
+	}
 	zwlr_layer_surface_v1_add_listener(layer_surface, &layer_listener, NULL);
 	wl_surface_commit(surface);
 }
@@ -2111,6 +2115,12 @@ main(int argc, char *argv[])
 	// Reserve space so other surfaces don't overlap the dock
 	zwlr_layer_surface_v1_set_exclusive_zone(layer_surface,
 		app_config.exclusive_zone);
+
+	// Push the bar away from the screen edge
+	{
+		int bs = app_config.border_space;
+		zwlr_layer_surface_v1_set_margin(layer_surface, bs, bs, bs, bs);
+	}
 
 	zwlr_layer_surface_v1_add_listener(layer_surface, &layer_listener, NULL);
 

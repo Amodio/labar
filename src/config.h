@@ -40,6 +40,9 @@ typedef struct {
 	DesktopEntry **apps;
 	int count;
 	int icon_size; // Default icon size in pixels (default: 64)
+	int icon_spacing;	// Spacing between icons in pixels (default: 0)
+	int exclusive_zone; // Exclusive zone for zwlr_layer_surface_v1 (default: 0)
+	int border_space;	// Margin from the screen edge in pixels (default: 0)
 	// When to display the app-name label (default: hover)
 	LabelMode label_mode;
 	unsigned int label_color; // Label color as 0xAARRGGBB (default: 0xFFFFFFFF)
@@ -59,11 +62,49 @@ typedef struct {
 	// Recommended range: 4–16 px. Default is 10 (a small raise from the
 	// bottom that keeps ascenders and most descenders inside the tile).
 	int label_offset;
-	int exclusive_zone; // Exclusive zone for zwlr_layer_surface_v1 (default: 0)
-	int icon_spacing;	// Spacing between icons in pixels (default: 0)
 	Position position;	// Bar position on screen (default: bottom)
 	Layer layer;		// Layer-shell layer (default: bottom)
 	char *output_name;	// Target output name (NULL = compositor default)
+
+	// ---------------------------------------------------------------------------
+	// CPU / RAM usage widget (sysinfo)
+	// ---------------------------------------------------------------------------
+	int show_sysinfo;				// 1 = show widget, 0 = disabled
+	unsigned int sysinfo_cpu_color; // ARGB color for the CPU line
+	unsigned int sysinfo_ram_color; // ARGB color for the RAM line
+	int sysinfo_font_size;			// font size in pt (0 = use default)
+	unsigned int sysinfo_bg_color;	// ARGB tile background (0 = transparent)
+	int sysinfo_tile_width;			// computed tile width (set after load)
+	char *sysinfo_exec; // command to run on left-click (NULL = disabled)
+
+	// ---------------------------------------------------------------------------
+	// Network activity widget
+	//
+	// When show_net is non-zero an extra text-only slot is appended to the bar
+	// (after the date slot if show_date is also enabled).  The slot renders two
+	// lines of text with Cairo:
+	//
+	//   Line 1 (upper half) – receive  speed  (e.g. "↓ 1.2 MB/s")
+	//   Line 2 (lower half) – transmit speed  (e.g. "↑  456 KB/s")
+	//
+	// Config keys in [global]:
+	//   show-net               true / false              (default: false)
+	//   widget-net-iface       interface name            (default: auto-detect)
+	//   widget-net-rx-color    #RRGGBB[AA]               (default: #4FC3F7)
+	//   widget-net-tx-color    #RRGGBB[AA]               (default: #EF9A9A)
+	//   widget-net-size        font size in pt           (default: 9)
+	//   widget-net-bg-color    #RRGGBB[AA] tile bg       (default: transparent)
+	//
+	// The slot is display-only — no mouse bindings are registered.
+	// The tile is redrawn automatically once per second.
+	// ---------------------------------------------------------------------------
+	int show_net;			   // 1 = append network slot, 0 = disabled
+	char *net_iface;		   // interface name (NULL = auto-detect)
+	unsigned int net_rx_color; // ARGB color for the RX speed line
+	unsigned int net_tx_color; // ARGB color for the TX speed line
+	int net_font_size;		   // font size in pt (0 = use default)
+	unsigned int net_bg_color; // ARGB tile background (0 = transparent)
+	int net_tile_width;		   // computed tile width (set after load)
 
 	// ---------------------------------------------------------------------------
 	// Volume widget
@@ -121,50 +162,10 @@ typedef struct {
 						 // never changes.
 
 	// ---------------------------------------------------------------------------
-	// Network activity widget
-	//
-	// When show_net is non-zero an extra text-only slot is appended to the bar
-	// (after the date slot if show_date is also enabled).  The slot renders two
-	// lines of text with Cairo:
-	//
-	//   Line 1 (upper half) – receive  speed  (e.g. "↓ 1.2 MB/s")
-	//   Line 2 (lower half) – transmit speed  (e.g. "↑  456 KB/s")
-	//
-	// Config keys in [global]:
-	//   show-net               true / false              (default: false)
-	//   widget-net-iface       interface name            (default: auto-detect)
-	//   widget-net-rx-color    #RRGGBB[AA]               (default: #4FC3F7)
-	//   widget-net-tx-color    #RRGGBB[AA]               (default: #EF9A9A)
-	//   widget-net-size        font size in pt           (default: 9)
-	//   widget-net-bg-color    #RRGGBB[AA] tile bg       (default: transparent)
-	//
-	// The slot is display-only — no mouse bindings are registered.
-	// The tile is redrawn automatically once per second.
-	// ---------------------------------------------------------------------------
-	int show_net;			   // 1 = append network slot, 0 = disabled
-	char *net_iface;		   // interface name (NULL = auto-detect)
-	unsigned int net_rx_color; // ARGB color for the RX speed line
-	unsigned int net_tx_color; // ARGB color for the TX speed line
-	int net_font_size;		   // font size in pt (0 = use default)
-	unsigned int net_bg_color; // ARGB tile background (0 = transparent)
-	int net_tile_width;		   // computed tile width (set after load)
-
-	// ---------------------------------------------------------------------------
-	// CPU / RAM usage widget (sysinfo)
-	// ---------------------------------------------------------------------------
-	int show_sysinfo;				// 1 = show widget, 0 = disabled
-	unsigned int sysinfo_cpu_color; // ARGB color for the CPU line
-	unsigned int sysinfo_ram_color; // ARGB color for the RAM line
-	int sysinfo_font_size;			// font size in pt (0 = use default)
-	unsigned int sysinfo_bg_color;	// ARGB tile background (0 = transparent)
-	int sysinfo_tile_width;			// computed tile width (set after load)
-	char *sysinfo_exec; // command to run on left-click (NULL = disabled)
-
-	// ---------------------------------------------------------------------------
 	// Widget ordering
 	//
 	// widget_order[0..4] stores the five slot IDs in their on-bar order.
-	// IDs: 0 = net, 1 = volume, 2 = date, 3 = apps, 4 = sysinfo.
+	// IDs: 0 = sysinfo, 1 = net, 2 = apps, 3 = volume, 4 = date.
 	// The order is derived from the sequence of [widget-*] / [apps] sections
 	// in the config file.  Default order: sysinfo, net, apps, volume, date.
 	// ---------------------------------------------------------------------------

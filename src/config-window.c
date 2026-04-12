@@ -299,6 +299,7 @@ struct _CfgWin {
 	GtkSpinButton *icon_size_spin;
 	GtkSpinButton *icon_spacing_spin;
 	GtkSpinButton *exclusive_zone_spin;
+	GtkSpinButton *border_space_spin;
 	GtkDropDown *label_mode_drop;
 	GtkColorDialog *color_dialog; /* unref'd in config_window_run */
 	GtkColorDialogButton *label_color_btn;
@@ -567,6 +568,7 @@ write_config(CfgWin *w)
 	c->icon_size = (int)gtk_spin_button_get_value(w->icon_size_spin);
 	c->icon_spacing = (int)gtk_spin_button_get_value(w->icon_spacing_spin);
 	c->exclusive_zone = (int)gtk_spin_button_get_value(w->exclusive_zone_spin);
+	c->border_space = (int)gtk_spin_button_get_value(w->border_space_spin);
 	c->label_mode = (LabelMode)gtk_drop_down_get_selected(w->label_mode_drop);
 	c->label_color = read_color_btn(w->label_color_btn);
 	c->label_size = (int)gtk_spin_button_get_value(w->label_size_spin);
@@ -637,6 +639,9 @@ write_config(CfgWin *w)
 	static const char *lay_str[] = {"background", "bottom", "top", "overlay"};
 
 	fprintf(fp, "[global]\n");
+	fprintf(fp, "icon-size=%d\n", c->icon_size);
+	fprintf(fp, "# icon-spacing: spacing between icons in pixels\n");
+	fprintf(fp, "icon-spacing=%d\n", c->icon_spacing);
 	fprintf(fp, "# exclusive-zone: interaction with other surfaces\n");
 	fprintf(fp, "#    0: surface will be moved to avoid occluding\n");
 	fprintf(fp, "#       surfaces with positive exclusive zone\n");
@@ -645,14 +650,15 @@ write_config(CfgWin *w)
 	fprintf(fp, "#   -1: surface stretches to edges, ignoring other\n");
 	fprintf(fp, "#       surfaces (e.g., wallpaper, lock screen)\n");
 	fprintf(fp, "exclusive-zone=%d\n", c->exclusive_zone);
-	fprintf(fp, "icon-size=%d\n", c->icon_size);
-	fprintf(fp, "# icon-spacing: spacing between icons in pixels\n");
-	fprintf(fp, "icon-spacing=%d\n", c->icon_spacing);
+	fprintf(fp, "# border-space: pixels between the bar and the screen edge\n");
+	fprintf(fp, "border-space=%d\n", c->border_space);
 	fprintf(fp, "# label-mode: always | hover | never\n");
 	fprintf(fp, "label-mode=%s\n",
 		(unsigned)c->label_mode < 3 ? lm_str[c->label_mode] : "hover");
 	fprintf(fp, "# label-color: hex color #RRGGBB or #RRGGBBAA\n");
 	fprint_color(fp, "label-color", c->label_color);
+	fprintf(fp, "# label-size: font size in points for the app-name label\n");
+	fprintf(fp, "label-size=%d\n", c->label_size);
 	fprintf(fp,
 		"# label_offset: pixels from the bottom edge of the icon"
 		" to the text baseline\n");
@@ -661,8 +667,6 @@ write_config(CfgWin *w)
 		" icon-size = top edge (text invisible)\n");
 	fprintf(fp, "#   recommended range: 4-16\n");
 	fprintf(fp, "label-offset=%d\n", c->label_offset);
-	fprintf(fp, "# label-size: font size in points for the app-name label\n");
-	fprintf(fp, "label-size=%d\n", c->label_size);
 	fprintf(fp, "# position: where to place the bar on screen\n");
 	fprintf(fp, "#   bottom (default): horizontal bar at the bottom\n");
 	fprintf(fp, "#   top:              horizontal bar at the top\n");
@@ -685,22 +689,42 @@ write_config(CfgWin *w)
 	fprintf(fp, "# output: output name to place the bar on (empty = auto)\n");
 	fprintf(fp, "# output=eDP-1\n");
 	fprintf(fp, "output=%s\n", c->output_name ? c->output_name : "");
-	fprintf(fp, "# show-net: show the network speed widget\n");
-	fprintf(fp, "show-net=%s\n", c->show_net ? "true" : "false");
 	fprintf(fp, "# show-sysinfo: show the CPU/RAM usage widget\n");
 	fprintf(fp, "show-sysinfo=%s\n", c->show_sysinfo ? "true" : "false");
+	fprintf(fp, "# show-net: show the network speed widget\n");
+	fprintf(fp, "show-net=%s\n", c->show_net ? "true" : "false");
 	fprintf(fp, "# show-volume: show the volume widget (after apps)\n");
 	fprintf(fp, "show-volume=%s\n", c->show_volume ? "true" : "false");
 	fprintf(fp, "# show-date: show the date/time widget (last slot)\n");
 	fprintf(fp, "show-date=%s\n", c->show_date ? "true" : "false");
 
 	/* Walk widget_order[5] in order, emitting each section.
-	 * WIDGET_ID_APPS (3) triggers the [apps] block. */
-	static const char *wnames[5] = {"net", "volume", "date", "apps", "sysinfo"};
+	 * WIDGET_ID_APPS (2) triggers the [apps] block. */
+	static const char *wnames[5] = {"sysinfo", "net", "apps", "volume", "date"};
 
 #define EMIT_WIDGET_SECTION(wid)                                               \
 	do {                                                                       \
 		if ((wid) == 0) {                                                      \
+			fprintf(fp, "\n[widget-sysinfo]\n");                               \
+			fprintf(fp, "# cpu-color: color for the CPU usage line\n");        \
+			fprint_color(fp, "cpu-color",                                      \
+				c->sysinfo_cpu_color ? c->sysinfo_cpu_color : 0xFFFFEB3B);     \
+			fprintf(fp, "# ram-color: color for the RAM usage line\n");        \
+			fprint_color(fp, "ram-color",                                      \
+				c->sysinfo_ram_color ? c->sysinfo_ram_color : 0xFF66BB6A);     \
+			fprintf(fp, "# size: font size in pt\n");                          \
+			fprintf(fp, "size=%d\n",                                           \
+				c->sysinfo_font_size > 0 ? c->sysinfo_font_size : 14);         \
+			fprintf(fp, "# bg-color: tile background color (#RRGGBBAA)\n");    \
+			fprintf(fp, "#   #00000094 = black 42%% transparent (default)\n"); \
+			fprintf(fp, "#   #00000000 = fully transparent\n");                \
+			fprint_color(fp, "bg-color",                                       \
+				c->sysinfo_bg_color ? c->sysinfo_bg_color : 0x94000000);       \
+			fprintf(fp,                                                        \
+				"# exec: command to run on left-click"                         \
+				" (empty to disable)\n");                                      \
+			fprintf(fp, "exec=%s\n", c->sysinfo_exec ? c->sysinfo_exec : "");  \
+		} else if ((wid) == 1) {                                               \
 			fprintf(fp, "\n[widget-net]\n");                                   \
 			fprintf(fp,                                                        \
 				"# iface: network interface to monitor"                        \
@@ -726,38 +750,6 @@ write_config(CfgWin *w)
 			fprint_color(fp, "bg-color",                                       \
 				c->net_bg_color ? c->net_bg_color : 0x94000000);               \
 		} else if ((wid) == 2) {                                               \
-			fprintf(fp, "\n[widget-date]\n");                                  \
-			fprintf(fp, "# Date line (upper half of the tile)\n");             \
-			fprintf(fp,                                                        \
-				"# format: strftime(3) format string,"                         \
-				" e.g. \"%%a %%d %%B\"\n");                                    \
-			fprintf(fp, "format=%s\n",                                         \
-				c->date_date_format && c->date_date_format[0] ?                \
-					c->date_date_format :                                      \
-					"%a %d %B");                                               \
-			fprint_color(fp, "color",                                          \
-				c->date_date_color ? c->date_date_color : 0xFF68FF3A);         \
-			fprintf(fp, "size=%d\n",                                           \
-				c->date_date_size > 0 ? c->date_date_size : 16);               \
-			fprintf(fp, "# Time line (lower half of the tile)\n");             \
-			fprintf(fp,                                                        \
-				"# time-format: strftime(3) format string,"                    \
-				" e.g. \"%%H:%%M\"\n");                                        \
-			fprintf(fp, "time-format=%s\n",                                    \
-				c->date_time_format && c->date_time_format[0] ?                \
-					c->date_time_format :                                      \
-					"%H:%M");                                                  \
-			fprint_color(fp, "time-color",                                     \
-				c->date_time_color ? c->date_time_color : 0xFFFF0000);         \
-			fprintf(fp, "time-size=%d\n",                                      \
-				c->date_time_size > 0 ? c->date_time_size : 36);               \
-			fprintf(fp, "# bg-color: tile background color (#RRGGBBAA)\n");    \
-			fprintf(fp, "#   #00000094 = black 42%% transparent (default)\n"); \
-			fprintf(fp, "#   #00000000 = fully transparent\n");                \
-			fprint_color(fp, "bg-color",                                       \
-				c->date_bg_color ? c->date_bg_color : 0x94000000);             \
-		} else if ((wid) == 3) {                                               \
-			/* Apps block */                                                   \
 			fprintf(fp, "\n[apps]\n");                                         \
 			GtkWidget *_ch =                                                   \
 				gtk_widget_get_first_child(GTK_WIDGET(w->apps_box));           \
@@ -790,34 +782,43 @@ write_config(CfgWin *w)
 				}                                                              \
 				_ch = gtk_widget_get_next_sibling(_ch);                        \
 			}                                                                  \
-		} /* volume (wid==1) */                                                \
-		else if ((wid) == 1) {                                                 \
+		} else if ((wid) == 3) {                                               \
 			fprintf(fp, "\n[widget-volume]\n");                                \
 			fprintf(fp,                                                        \
 				"# exec: command to run on right-click"                        \
 				" (empty to disable)\n");                                      \
 			fprintf(fp, "exec=%s\n", c->volume_exec ? c->volume_exec : "");    \
-		} /* sysinfo (wid==4) */                                               \
-		else if ((wid) == 4) {                                                 \
-			fprintf(fp, "\n[widget-sysinfo]\n");                               \
-			fprintf(fp, "# cpu-color: color for the CPU usage line\n");        \
-			fprint_color(fp, "cpu-color",                                      \
-				c->sysinfo_cpu_color ? c->sysinfo_cpu_color : 0xFFFFEB3B);     \
-			fprintf(fp, "# ram-color: color for the RAM usage line\n");        \
-			fprint_color(fp, "ram-color",                                      \
-				c->sysinfo_ram_color ? c->sysinfo_ram_color : 0xFF66BB6A);     \
-			fprintf(fp, "# size: font size in pt\n");                          \
+		} else if ((wid) == 4) {                                               \
+			fprintf(fp, "\n[widget-date]\n");                                  \
+			fprintf(fp, "# Date line (upper half of the tile)\n");             \
+			fprintf(fp,                                                        \
+				"# format: strftime(3) format string,"                         \
+				" e.g. \"%%a %%d %%B\"\n");                                    \
+			fprintf(fp, "format=%s\n",                                         \
+				c->date_date_format && c->date_date_format[0] ?                \
+					c->date_date_format :                                      \
+					"%a %d %B");                                               \
+			fprint_color(fp, "color",                                          \
+				c->date_date_color ? c->date_date_color : 0xFF68FF3A);         \
 			fprintf(fp, "size=%d\n",                                           \
-				c->sysinfo_font_size > 0 ? c->sysinfo_font_size : 14);         \
+				c->date_date_size > 0 ? c->date_date_size : 16);               \
+			fprintf(fp, "# Time line (lower half of the tile)\n");             \
+			fprintf(fp,                                                        \
+				"# time-format: strftime(3) format string,"                    \
+				" e.g. \"%%H:%%M\"\n");                                        \
+			fprintf(fp, "time-format=%s\n",                                    \
+				c->date_time_format && c->date_time_format[0] ?                \
+					c->date_time_format :                                      \
+					"%H:%M");                                                  \
+			fprint_color(fp, "time-color",                                     \
+				c->date_time_color ? c->date_time_color : 0xFFFF0000);         \
+			fprintf(fp, "time-size=%d\n",                                      \
+				c->date_time_size > 0 ? c->date_time_size : 36);               \
 			fprintf(fp, "# bg-color: tile background color (#RRGGBBAA)\n");    \
 			fprintf(fp, "#   #00000094 = black 42%% transparent (default)\n"); \
 			fprintf(fp, "#   #00000000 = fully transparent\n");                \
 			fprint_color(fp, "bg-color",                                       \
-				c->sysinfo_bg_color ? c->sysinfo_bg_color : 0x94000000);       \
-			fprintf(fp,                                                        \
-				"# exec: command to run on left-click"                         \
-				" (empty to disable)\n");                                      \
-			fprintf(fp, "exec=%s\n", c->sysinfo_exec ? c->sysinfo_exec : "");  \
+				c->date_bg_color ? c->date_bg_color : 0x94000000);             \
 		}                                                                      \
 	} while (0)
 
@@ -1318,24 +1319,24 @@ make_widget_row(CfgWin *w, int pos)
 	int show_val = 0;
 	switch (wid) {
 	case 0:
+		label_text = "CPU/RAM usage";
+		show_val = w->cfg.show_sysinfo;
+		break;
+	case 1:
 		label_text = "Network speed widget";
 		show_val = w->cfg.show_net;
 		break;
-	case 1:
-		label_text = "Volume widget";
-		show_val = w->cfg.show_volume;
-		break;
 	case 2:
-		label_text = "Date/time widget";
-		show_val = w->cfg.show_date;
-		break;
-	case 3:
 		label_text = "App icons";
 		show_val = 1;
 		break;
+	case 3:
+		label_text = "Volume widget";
+		show_val = w->cfg.show_volume;
+		break;
 	case 4:
-		label_text = "CPU/RAM usage";
-		show_val = w->cfg.show_sysinfo;
+		label_text = "Date/time widget";
+		show_val = w->cfg.show_date;
 		break;
 	}
 
@@ -1977,6 +1978,11 @@ on_activate(GApplication *gapp, gpointer data)
 	grid_row(GTK_GRID(gg), r++,
 		"Exclusive zone:", GTK_WIDGET(w->exclusive_zone_spin));
 	connect_mark_unsaved(GTK_WIDGET(w->exclusive_zone_spin), w);
+
+	w->border_space_spin = make_spin(0, 2048, w->cfg.border_space);
+	grid_row(GTK_GRID(gg), r++,
+		"Border space (px):", GTK_WIDGET(w->border_space_spin));
+	connect_mark_unsaved(GTK_WIDGET(w->border_space_spin), w);
 
 	{
 		static const char *const lm[] = {"always", "hover", "never", NULL};

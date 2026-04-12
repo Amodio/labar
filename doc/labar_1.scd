@@ -1,0 +1,447 @@
+labar(1)
+
+# NAME
+
+labar - A Wayland layer-shell application bar with icons, a volume widget,
+a network speed widget, a CPU/RAM usage widget, and a date/time widget
+
+# SYNOPSIS
+
+*labar* [*-v*...] [*-c*] [*-V*]
+
+# DESCRIPTION
+
+*labar* is a minimal Wayland layer-shell bar that displays application icons
+and optional widgets (volume, network speed, CPU/RAM usage, date/time). It
+renders on any edge of the screen (top, bottom, left, or right) using the
+*zwlr-layer-shell-v1* protocol.
+Icons are rendered from SVG or PNG files; the bar reacts to mouse clicks,
+right-clicks, and scroll events. HiDPI displays are supported via
+*wl_output.scale* (integer) and *wp_fractional_scale_v1* (fractional).
+Output names and logical geometry are obtained via
+*zxdg_output_manager_v1* when available.
+
+The configuration file is located at *~/.config/labar.cfg*. If it does not
+exist, *labar* generates a default one on first run.
+
+# OPTIONS
+
+*-h, --help*
+	Display the help message and exit.
+
+*-v, --verbose*
+	Increase verbosity. May be specified up to four times:
+
+	*-v*
+		Level 1 — general lifecycle messages: configuration loaded,
+		bar dimensions, output scale detected, output names and
+		descriptions from *zxdg_output_v1*, HiDPI scale events,
+		volume changes, network interface selected, and
+		minute/second boundary repaints.
+
+	*-vv*
+		Level 2 — Wayland protocol details: globals bound
+		(wl_seat, wl_output, wp_fractional_scale_manager_v1,
+		wp_viewporter, zxdg_output_manager_v1), output logical
+		geometry, surface enter/leave events, config key parsing,
+		icon cache hits, pointer enter/leave/click/scroll events
+		per slot.
+
+	*-vvv*
+		Level 3 — file I/O: every SVG and PNG open attempt (success
+		and failure), icon cache store/lookup/miss/clear operations
+		with path and size, icon search per application name.
+
+	*-vvvv*
+		Level 4 — high-frequency events: raw pointer motion
+		coordinates on every mouse move, net and sysinfo tile render
+		details, per-second samples. Use only for input debugging;
+		output is very noisy.
+
+*-c, --config*
+	Open the graphical configuration editor (requires GTK4). The editor
+	lets you inspect and modify all settings interactively and save them
+	back to *~/.config/labar.cfg* without editing the file by hand.
+	Widgets and the app-icon block can be reordered using the
+	*▲ Up* / *▼ Down* buttons.
+	Available only when *labar* is built with *-DHAVE_GTK4=1*.
+
+*-V, --version*
+	Print the version string and exit.
+
+# CONFIGURATION
+
+*~/.config/labar.cfg* uses an INI-style format with a *[global]* section,
+optional widget sections (*[widget-sysinfo]*, *[widget-net]*, *[widget-volume]*,
+*[widget-date]*), and an *[apps]* section. The bar order is determined by the
+sequence of sections in the file; the default is: CPU/RAM widget → net widget →
+app icons → volume widget → date/time widget.
+
+## [global] keys
+
+*icon-size=*_N_
+	Icon slot size in pixels (logical). Applies to both width and height
+	of each app slot, and to the cross-axis thickness of the bar.
+	Default: *64*.
+
+*icon-spacing=*_N_
+	Gap in pixels between icon slots. Default: *0*.
+
+*exclusive-zone=*_N_
+	Exclusive zone in pixels to reserve at the bar edge, preventing
+	other surfaces from overlapping. Set to *0* to disable.
+	Default: *64*.
+
+*border-space=*_N_
+	Distance in pixels between the bar and the screen edge. Implemented
+	via *zwlr_layer_surface_v1.set_margin*; the compositor applies the
+	margin only on the anchored edge. Default: *0*.
+
+*label-mode=*_always_|_hover_|_never_
+	When to show the text label overlay on icons.
+	*always* draws labels permanently; *hover* shows them only while
+	the pointer is over the slot; *never* disables them entirely.
+	Default: *hover*.
+
+*label-color=*_#RRGGBB_|_#RRGGBBAA_
+	Label text color. Six-digit form is fully opaque; eight-digit form
+	includes an alpha byte. Default: *#FFFFFF* (white, fully opaque).
+
+*label-size=*_N_
+	Label font size in points. Default: *10*.
+
+*label-offset=*_N_
+	Distance in pixels from the bottom edge of the slot to the text
+	baseline. Default: *10*.
+
+*position=*_top_|_bottom_|_left_|_right_
+	Which screen edge to attach the bar to. Default: *bottom*.
+
+*layer=*_background_|_bottom_|_top_|_overlay_
+	Wayland layer-shell layer. Default: *top* (above normal windows).
+
+*output=*_NAME_
+	Name of the output (monitor) to place the bar on, as reported by
+	*zxdg_output_v1.name* (e.g. *eDP-1*, *HDMI-A-1*, *DP-2*). Run
+	*labar -v* to see available output names at startup. If omitted
+	or empty, the compositor chooses the output automatically.
+	Default: empty (compositor default).
+
+*show-sysinfo=*_true_|_false_
+	Show a CPU/RAM usage text slot. The slot renders two lines read from
+	*/proc/stat* (CPU idle-time delta) and */proc/meminfo*
+	(MemTotal − MemAvailable). Settings live in the *[widget-sysinfo]*
+	section. Default: *true*.
+
+*show-net=*_true_|_false_
+	Show a network speed text slot. The slot renders two lines showing
+	the current receive and transmit speeds read from */proc/net/dev*.
+	Settings live in the *[widget-net]* section. Default: *true*.
+
+*show-volume=*_true_|_false_
+	Show a volume icon slot. The slot displays the current ALSA PCM
+	level; left-click toggles mute, right-click runs the command
+	configured in *[widget-volume]*, and scroll adjusts the volume.
+	Default: *true*.
+
+*show-date=*_true_|_false_
+	Show a date/time text slot. The slot renders two lines of text using
+	Cairo; no icon file is required. Settings live in the
+	*[widget-date]* section. Default: *true*.
+
+## [widget-sysinfo] keys
+
+*cpu-color=*_#RRGGBB_|_#RRGGBBAA_
+	Color of the CPU usage line (e.g. *CPU  42%*).
+	Default: *#FFEB3B* (yellow).
+
+*ram-color=*_#RRGGBB_|_#RRGGBBAA_
+	Color of the RAM usage line (e.g. *RAM  61%*).
+	Default: *#66BB6A* (green).
+
+*size=*_N_
+	Font size in points for both usage lines. Default: *14*.
+
+*bg-color=*_#RRGGBBAA_
+	Background fill color for the tile. Default: *#00000094* (black,
+	42% transparent).
+
+*exec=*_COMMAND_
+	Command to run when the tile is left-clicked. Parsed and launched
+	with *execvp*(3); leave empty to disable click handling.
+	Default: *foot -e btop*.
+
+## [widget-net] keys
+
+*iface=*_NAME_
+	Network interface to monitor (e.g. *eth0*, *wlan0*). If omitted,
+	*labar* auto-detects the first non-loopback interface with traffic.
+
+*rx-color=*_#RRGGBB_|_#RRGGBBAA_
+	Color of the receive (download) speed line.
+	Default: *#FF3FFA* (magenta).
+
+*tx-color=*_#RRGGBB_|_#RRGGBBAA_
+	Color of the transmit (upload) speed line.
+	Default: *#3AFFFD* (cyan).
+
+*size=*_N_
+	Font size in points for both speed lines. Default: *14*.
+
+*bg-color=*_#RRGGBBAA_
+	Background fill color for the tile. Default: *#00000094* (black,
+	42% transparent).
+
+## [widget-volume] keys
+
+*exec=*_COMMAND_
+	Command to run when the slot is right-clicked. Parsed and launched
+	with *execvp*(3); leave empty to disable right-click handling.
+	Default: *foot -e alsamixer*.
+
+## [widget-date] keys
+
+*format=*_FORMAT_
+	*strftime*(3) format string for the upper line of the date slot.
+	Default: *%a %d %B* (abbreviated weekday and day-of-month).
+
+*color=*_#RRGGBB_|_#RRGGBBAA_
+	Color of the upper date line. Default: *#68FF3A*.
+
+*size=*_N_
+	Font size in points for the upper date line. Default: *16*.
+
+*time-format=*_FORMAT_
+	*strftime*(3) format string for the lower line of the date slot.
+	If the format includes *%S*, *%T*, *%X*, *%c*, or *%r*, the slot
+	refreshes every second; otherwise it refreshes at each minute
+	boundary. Default: *%H:%M*.
+
+*time-color=*_#RRGGBB_|_#RRGGBBAA_
+	Color of the lower time line. Default: *#FF0000*.
+
+*time-size=*_N_
+	Font size in points for the lower time line. Default: *36*.
+
+*bg-color=*_#RRGGBBAA_
+	Background fill color for the date/time tile. Supports alpha;
+	*#00000000* is fully transparent. Default: *#00000094* (black,
+	42% transparent).
+
+## Widget ordering
+
+The on-bar position of each widget and the app-icon block is determined by
+the order in which their sections appear in the config file. Sections that
+appear before *[apps]* are placed to the left of the app icons; sections that
+appear after *[apps]* are placed to the right. Any widget whose section is
+absent is appended in the default relative order.
+
+Default order: *[widget-sysinfo]* → *[widget-net]* → *[apps]* →
+*[widget-volume]* → *[widget-date]*.
+
+## Background pill grouping all have a non-transparent *bg-color*,
+*labar* merges their backgrounds into a single rounded pill: inner shared
+edges are drawn as straight lines and the spacing gap between tiles is filled
+with the same colour. Only the outer edges of the group receive rounded
+corners.
+
+## [apps] keys
+
+Each application is defined by a consecutive block of keys inside an
+*[apps]* section. Multiple applications may appear in the same section.
+
+*name=*_NAME_
+	Display name, shown as the hover label.
+
+*icon=*_PATH_
+	Full filesystem path to an SVG or PNG icon file.
+
+*exec=*_COMMAND_
+	Command executed on left-click. Parsed by *execvp*(3); *%u* and
+	similar desktop-file placeholders are passed through verbatim.
+
+*terminal=*_true_|_false_
+	If *true*, the command is launched inside the terminal emulator
+	defined by the *DEFAULT_TERMINAL* compile-time constant (default:
+	*foot*). Default: *false*.
+
+## Default configuration
+
+```
+[global]
+exclusive-zone=64
+icon-size=64
+icon-spacing=0
+border-space=0
+label-mode=hover
+label-color=#FFFFFF
+label-offset=10
+label-size=10
+position=bottom
+layer=top
+# output: output name to place the bar on (empty = auto)
+# output=eDP-1
+output=
+show-sysinfo=true
+show-net=true
+show-volume=true
+show-date=true
+
+[widget-sysinfo]
+cpu-color=#FFEB3B
+ram-color=#66BB6A
+size=14
+bg-color=#00000094
+exec=foot -e btop
+
+[widget-net]
+# iface=eth0
+rx-color=#FF3FFA
+tx-color=#3AFFFD
+size=14
+bg-color=#00000094
+
+[apps]
+name=Firefox
+icon=/usr/share/icons/hicolor/scalable/apps/firefox.svg
+exec=/usr/lib/firefox/firefox %u
+
+name=Foot
+icon=/usr/share/icons/hicolor/scalable/apps/foot.svg
+exec=foot
+
+[widget-volume]
+exec=foot -e alsamixer
+
+[widget-date]
+format=%a %d %B
+color=#68FF3A
+size=16
+time-format=%H:%M
+time-color=#FF0000
+time-size=36
+bg-color=#00000094
+```
+
+# ICON DISCOVERY
+
+When generating the default configuration, *labar* searches for icons
+automatically:
+
+. Searches */usr/share/icons* recursively for each known application.
+. Prioritises SVG icons (resolution-independent).
+. Falls back to PNG icons, selecting the largest available size.
+. Writes the absolute path into the generated configuration file.
+
+Icons can also be specified manually by providing a full path in *icon=*.
+
+# HIDPI
+
+*labar* detects the display scale automatically:
+
+- Integer scaling is read from *wl_output.scale* events (e.g. 2× for a
+  standard HiDPI display).
+- Fractional scaling is read from the *wp_fractional_scale_v1* protocol
+  when the compositor advertises it (e.g. 1.5× or 1.25×). A
+  *wp_viewport* corrects the logical-to-physical mapping.
+
+Output names (e.g. *eDP-1*, *HDMI-A-1*) and logical positions are
+read from the *zxdg_output_v1* listener when the compositor advertises
+*zxdg_output_manager_v1*. This information is currently used for
+diagnostics and verbose logging; future versions may use it to select
+which output the bar is placed on.
+
+The SHM buffer is allocated at the physical pixel resolution and
+*wl_surface_set_buffer_scale* (or *wp_viewport_set_destination* for
+fractional scaling) is set accordingly. The icon cache is invalidated
+and the bar is redrawn whenever the scale changes, including when the bar
+moves to a different monitor via *wl_surface.enter*.
+
+# MOUSE BINDINGS
+
+*Application icons*
+	Left-click launches the configured *exec* command.
+	Right-click has no default binding.
+	Scroll has no default binding.
+
+*Volume slot* (when *show-volume=true*)
+	Left-click toggles ALSA PCM mute.
+	Right-click runs the command set by *exec=* in *[widget-volume]*
+	(default: *foot -e alsamixer*); no action if *exec=* is empty.
+	Scroll up/down adjusts PCM volume by 4%.
+
+*CPU/RAM usage slot* (when *show-sysinfo=true*)
+	Left-click runs the command configured with *exec=* in
+	*[widget-sysinfo]* (default: *foot -e btop*); no action if
+	*exec=* is empty.
+	Right-click and scroll have no binding.
+
+*Network speed slot* (when *show-net=true*)
+	Display-only; no mouse bindings.
+
+*Date/time slot* (when *show-date=true*)
+	Left-click opens a built-in yearly calendar popup rendered
+	directly on the bar. Clicking the popup closes it.
+	Right-click and scroll have no binding.
+
+# ENVIRONMENT
+
+*HOME*
+	Used to locate the configuration file at *$HOME/.config/labar.cfg*.
+
+*LANG*, *LC_TIME*
+	Used by *strftime*(3) to localise day and month names in the date
+	slot.
+
+# FILES
+
+*~/.config/labar.cfg*
+	User configuration file. Created automatically on first run if it
+	does not exist.
+
+*/usr/share/pixmaps/labar/*
+	Default directory for volume widget icons
+	(*pnmixer-high.png*, *pnmixer-medium.png*, *pnmixer-low.png*,
+	*pnmixer-off.png*, *pnmixer-muted.png*).
+
+# EXAMPLES
+
+Run with default settings:
+```
+labar
+```
+
+Open the graphical configuration editor:
+```
+labar -c
+```
+
+Run with lifecycle logging:
+```
+labar -v
+```
+
+Run with Wayland protocol and config parsing details:
+```
+labar -vv
+```
+
+Run with full file I/O and cache tracing:
+```
+labar -vvv
+```
+
+Print the version:
+```
+labar -V
+```
+
+# SEE ALSO
+
+*strftime*(3), *alsamixer*(1)
+
+# AUTHORS
+
+Jacques Boscq <jacques@boscq.fr>
+
+Source code available at https://github.com/Amodio/labar
