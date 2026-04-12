@@ -20,7 +20,7 @@ gtk4_dep = dependency('gtk4', required: false)
 
 # GTK4 is lazily loaded (to save ~80MB in "normal" mode, not using --config)
 add_project_arguments(
-  '-DLABAR_LIB_DIR="' + (get_option('prefix') / get_option('libdir') / 'labar') + '"',
+  '-DLABAR_LIB_DIR="' + (get_option('prefix') / 'lib' / 'labar') + '"',
   language: 'c'
 )
 
@@ -79,10 +79,10 @@ if gtk4_dep.found()
     'labar-config',
     'src/config-window.c',
     dependencies: [gtk4_dep, cc.find_library('m', required: true)],
-    link_args : ['-Wl,--undefined-version', '-Wl,--no-as-needed'],
+    link_args : ['-Wl,--allow-shlib-undefined'],
     override_options : ['b_lundef=false'],
     install: true,
-    install_dir: get_option('libdir') / 'labar',
+    install_dir : get_option('prefix') / 'lib' / 'labar',
   )
   deps += cc.find_library('dl', required: true)
   # config-window.c is no longer in sources[]
