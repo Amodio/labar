@@ -101,7 +101,7 @@ sudo meson install -C build-debug/
 ```
 
 Sanitizers ([Address](https://clang.llvm.org/docs/AddressSanitizer.html),
-[Leak](https://clang.llvm.org/docs/AddressSanitizer.html),
+[Leak](https://clang.llvm.org/docs/LeakSanitizer.html),
 [Undefined Behavior](
 https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html))
 will be embedded in the binary, as well as debug symbols.
