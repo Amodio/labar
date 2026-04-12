@@ -39,7 +39,7 @@ typedef enum {
 typedef struct {
 	DesktopEntry **apps;
 	int count;
-	int icon_size; // Default icon size in pixels (default: 64)
+	int icon_size;		// Default icon size in pixels (default: 64)
 	int icon_spacing;	// Spacing between icons in pixels (default: 0)
 	int exclusive_zone; // Exclusive zone for zwlr_layer_surface_v1 (default: 0)
 	int border_space;	// Margin from the screen edge in pixels (default: 0)
@@ -62,9 +62,9 @@ typedef struct {
 	// Recommended range: 4–16 px. Default is 10 (a small raise from the
 	// bottom that keeps ascenders and most descenders inside the tile).
 	int label_offset;
-	Position position;	// Bar position on screen (default: bottom)
-	Layer layer;		// Layer-shell layer (default: bottom)
-	char *output_name;	// Target output name (NULL = compositor default)
+	Position position; // Bar position on screen (default: bottom)
+	Layer layer;	   // Layer-shell layer (default: bottom)
+	char *output_name; // Target output name (NULL = compositor default)
 
 	// ---------------------------------------------------------------------------
 	// CPU / RAM usage widget (sysinfo)
