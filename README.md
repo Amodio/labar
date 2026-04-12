@@ -80,9 +80,9 @@ sudo apt install libgtk-4-dev # if you want the --config option
 
 On Alpine Linux:
 ```bash
-apk add meson pkgconf cmake wayland-dev wayland-protocols cairo-dev \
+sudo apk add meson pkgconf cmake wayland-dev wayland-protocols cairo-dev \
 librsvg-dev alsa-lib-dev scdoc clang22-dev compiler-rt
-apk add gtk4.0-dev # if you want the --config option
+sudo apk add gtk4.0-dev # if you want the --config option
 ```
 
 ## Installation
@@ -124,8 +124,8 @@ UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./build-debug/labar
 | `suppressions` | — | Path to suppression file |
 | `symbolize` | `1` | Symbolize reports (disable with `0` for offline use) |
 ```bash
-ASAN_OPTIONS=detect_leaks=1:check_initialization_order=1:suppressions=asan.supp
-./labar
+ASAN_OPTIONS=detect_leaks=1:check_initialization_order=1:\
+suppressions=asan.supp labar
 ```
 
 Suppression file format:
@@ -145,7 +145,7 @@ interceptor_via_lib:NameOfTheLibraryToSuppress
 | `report_objects` | `0` | Report addresses of individual leaked objects |
 | `use_unaligned` | `0` | Also scan unaligned 8-byte patterns for pointers |
 ```bash
-LSAN_OPTIONS=suppressions=lsan.supp:report_objects=1:use_unaligned=1 ./labar
+LSAN_OPTIONS=suppressions=lsan.supp:report_objects=1:use_unaligned=1 labar
 ```
 
 #### `UBSAN_OPTIONS`
@@ -156,7 +156,7 @@ LSAN_OPTIONS=suppressions=lsan.supp:report_objects=1:use_unaligned=1 ./labar
 | `halt_on_error` | `0` | Stop on first error (like ASan) |
 | `suppressions` | — | Path to suppression file |
 ```bash
-UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./labar
+UBSAN_OPTIONS=suppressions=ubsan.supp:print_stacktrace=1:halt_on_error=1 labar
 ```
 
 For readable stack traces across all sanitizers, ensure `llvm-symbolizer` is 
