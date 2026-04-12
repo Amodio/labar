@@ -20,6 +20,7 @@
 #include "cache.h"
 #include "config.h"
 #ifdef HAVE_GTK4
+#include <dlfcn.h>
 #include "config-window.h"
 #endif
 #include "calendar-popup.h"
@@ -1832,15 +1833,37 @@ main(int argc, char *argv[])
 		case 'V':
 			printf("%s\n", VERSION);
 			return 0;
-#ifdef HAVE_GTK4
-		case 'c':
-			return config_window_run();
-#else
-		case 'c':
+		case 'c': {
+#ifndef HAVE_GTK4
 			fprintf(stderr,
 				"labar was built without GTK4; --config is not available.\n");
 			return 1;
+#else
+			// dlopen the config plugin only now — GTK4/Mesa stay out of memory
+			// during normal bar operation
+			void *lib = dlopen("liblabar-config.so", RTLD_LAZY | RTLD_LOCAL);
+			if (!lib) {
+				// Fall back to well-known install path
+				lib = dlopen(LABAR_LIB_DIR "/liblabar-config.so",
+					RTLD_LAZY | RTLD_LOCAL);
+			}
+			if (!lib) {
+				fprintf(stderr, "labar: cannot load config plugin: %s\n",
+					dlerror());
+				return 1;
+			}
+			int (*run)(void) = dlsym(lib, "config_window_run");
+			if (!run) {
+				fprintf(stderr, "labar: config plugin missing symbol: %s\n",
+					dlerror());
+				dlclose(lib);
+				return 1;
+			}
+			int ret = run();
+			dlclose(lib);
+			return ret;
 #endif
+		}
 		default:
 			fprintf(stderr,
 				"Usage: %s [-h|--help] [-v|--verbose] [-V|--version] [-c|--config]\n",
