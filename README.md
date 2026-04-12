@@ -96,7 +96,7 @@ sudo meson install -C build/
 
 ```bash
 CC=clang meson setup build-debug/ -Dlibdir=lib -Db_lundef=false
-meson compile -C build-debug/
+sudo meson install -C build-debug/
 ```
 
 Sanitizers ([Address](https://clang.llvm.org/docs/AddressSanitizer.html),
@@ -110,7 +110,7 @@ You may combine below env. variables:
 ASAN_SYMBOLIZER_PATH=/usr/lib/llvm22/bin/llvm-symbolizer             \
 ASAN_OPTIONS=check_initialization_order=1                            \
 LSAN_OPTIONS=suppressions=lsan.supp:report_objects=1:use_unaligned=1 \
-UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./build-debug/labar
+UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 labar
 ```
 
 #### `ASAN_OPTIONS`
