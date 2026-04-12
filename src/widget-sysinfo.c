@@ -5,6 +5,7 @@
 #include "widget-common.h"
 
 #include <cairo.h>
+#include <dirent.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,6 +34,9 @@ typedef struct {
 	// 1200%")
 	char cpu_label[20];
 	char ram_label[16];
+	// Name of the most CPU-intensive and most RAM-intensive process
+	char cpu_proc[32];
+	char ram_proc[32];
 	int initialized;
 	// Number of logical CPU cores (counted from /proc/stat cpu0, cpu1, ...)
 	int ncpu;
@@ -146,6 +150,175 @@ read_ram_pct(void)
 	return (int)(100LL * used / total);
 }
 
+/*
+ * read_top_cpu_proc — find the process name with the highest utime+stime
+ * delta since last call by scanning /proc/[pid]/stat.
+ * Writes into out_name (max out_len bytes, always NUL-terminated).
+ *
+ * We keep a small static table of previous utime+stime per PID so we can
+ * compute deltas.  PIDs that vanish are simply ignored on the next call.
+ */
+#define PROC_TRACK_MAX 1024
+static struct {
+	int pid;
+	long long prev_ticks;
+} proc_cpu_track[PROC_TRACK_MAX];
+static int proc_cpu_track_n = 0;
+
+static void
+read_top_cpu_proc(char *out_name, int out_len)
+{
+	DIR *d = opendir("/proc");
+	if (!d) {
+		snprintf(out_name, out_len, "?");
+		return;
+	}
+
+	long best_delta = 0;
+	char best_name[32] = {0};
+
+	struct dirent *ent;
+	while ((ent = readdir(d))) {
+		// Only numeric entries are PIDs
+		if (ent->d_name[0] < '1' || ent->d_name[0] > '9')
+			continue;
+		int pid = atoi(ent->d_name);
+		if (pid <= 0)
+			continue;
+
+		char path[64];
+		snprintf(path, sizeof(path), "/proc/%d/stat", pid);
+		FILE *fp = fopen(path, "r");
+		if (!fp)
+			continue;
+
+		// /proc/pid/stat fields: pid (comm) state ppid ... utime stime ...
+		// comm is field 2 (in parens), utime=14, stime=15 (1-indexed)
+		char comm[32] = {0};
+		long utime = 0, stime = 0;
+		// Read the whole line; comm may contain spaces but is wrapped in ()
+		char buf[512];
+		if (!fgets(buf, sizeof(buf), fp)) {
+			fclose(fp);
+			continue;
+		}
+		fclose(fp);
+
+		// Find the comm between first '(' and last ')'
+		char *lp = strchr(buf, '(');
+		char *rp = strrchr(buf, ')');
+		if (!lp || !rp || rp <= lp)
+			continue;
+		int clen = (int)(rp - lp - 1);
+		if (clen >= (int)sizeof(comm))
+			clen = (int)sizeof(comm) - 1;
+		memcpy(comm, lp + 1, clen);
+		comm[clen] = '\0';
+
+		// Parse remaining fields after ')'
+		// state ppid pgrp session tty_nr tpgid flags minflt cminflt majflt
+		// cmajflt utime stime — that's 13 more fields after state
+		char state;
+		int ppid, pgrp, session, tty, tpgid;
+		unsigned flags;
+		long minflt, cminflt, majflt, cmajflt;
+		sscanf(rp + 1, " %c %d %d %d %d %d %u %ld %ld %ld %ld %ld %ld", &state,
+			&ppid, &pgrp, &session, &tty, &tpgid, &flags, &minflt, &cminflt,
+			&majflt, &cmajflt, &utime, &stime);
+
+		long long ticks = (long long)utime + stime;
+
+		// Look up previous ticks for this PID
+		long long prev_ticks = 0;
+		int found = 0;
+		for (int i = 0; i < proc_cpu_track_n; i++) {
+			if (proc_cpu_track[i].pid == pid) {
+				prev_ticks = proc_cpu_track[i].prev_ticks;
+				proc_cpu_track[i].prev_ticks = ticks;
+				found = 1;
+				break;
+			}
+		}
+		if (!found && proc_cpu_track_n < PROC_TRACK_MAX) {
+			proc_cpu_track[proc_cpu_track_n].pid = pid;
+			proc_cpu_track[proc_cpu_track_n].prev_ticks = ticks;
+			proc_cpu_track_n++;
+		}
+
+		long delta = (long)(ticks - prev_ticks);
+		if (delta > best_delta) {
+			best_delta = delta;
+			snprintf(best_name, sizeof(best_name), "%s", comm);
+		}
+	}
+	closedir(d);
+
+	if (best_name[0])
+		snprintf(out_name, out_len, "%s", best_name);
+	else
+		snprintf(out_name, out_len, "-");
+}
+
+/*
+ * read_top_ram_proc — find the process name with the highest RSS by reading
+ * /proc/[pid]/statm (field 2 is RSS in pages).
+ */
+static void
+read_top_ram_proc(char *out_name, int out_len)
+{
+	DIR *d = opendir("/proc");
+	if (!d) {
+		snprintf(out_name, out_len, "?");
+		return;
+	}
+
+	long best_rss = 0;
+	char best_name[32] = {0};
+
+	struct dirent *ent;
+	while ((ent = readdir(d))) {
+		if (ent->d_name[0] < '1' || ent->d_name[0] > '9')
+			continue;
+		int pid = atoi(ent->d_name);
+		if (pid <= 0)
+			continue;
+
+		// Read comm
+		char comm_path[64], statm_path[64];
+		snprintf(comm_path, sizeof(comm_path), "/proc/%d/comm", pid);
+		snprintf(statm_path, sizeof(statm_path), "/proc/%d/statm", pid);
+
+		FILE *fp = fopen(statm_path, "r");
+		if (!fp)
+			continue;
+		long vmsize = 0, rss = 0;
+		fscanf(fp, "%ld %ld", &vmsize, &rss);
+		fclose(fp);
+
+		if (rss <= best_rss)
+			continue;
+
+		fp = fopen(comm_path, "r");
+		if (!fp)
+			continue;
+		char comm[32] = {0};
+		if (fgets(comm, sizeof(comm), fp)) {
+			// Strip trailing newline
+			comm[strcspn(comm, "\n")] = '\0';
+		}
+		fclose(fp);
+
+		best_rss = rss;
+		snprintf(best_name, sizeof(best_name), "%s", comm);
+	}
+	closedir(d);
+
+	if (best_name[0])
+		snprintf(out_name, out_len, "%s", best_name);
+	else
+		snprintf(out_name, out_len, "-");
+}
+
 // ---------------------------------------------------------------------------
 // sysinfo_widget_init
 // ---------------------------------------------------------------------------
@@ -235,10 +408,12 @@ sysinfo_draw_tile(uint32_t *data, int width, int height, const Config *cfg,
 
 	const char *cpu_str = g_si.cpu_label[0] ? g_si.cpu_label : "CPU  --%";
 	const char *ram_str = g_si.ram_label[0] ? g_si.ram_label : "RAM  --%";
+	const char *cpu_proc = g_si.cpu_proc[0] ? g_si.cpu_proc : "";
+	const char *ram_proc = g_si.ram_proc[0] ? g_si.ram_proc : "";
 
 	if (verbose >= 4)
-		printf("[SYSINFO] tile %dx%d  cpu='%s'  ram='%s'\n", width, height,
-			cpu_str, ram_str);
+		printf("[SYSINFO] tile %dx%d  cpu='%s' (%s)  ram='%s' (%s)\n", width,
+			height, cpu_str, cpu_proc, ram_str, ram_proc);
 
 	cairo_surface_t *cs =
 		cairo_image_surface_create_for_data((unsigned char *)data,
@@ -263,12 +438,34 @@ sysinfo_draw_tile(uint32_t *data, int width, int height, const Config *cfg,
 	font_sz = fit_font_size(cr, cpu_str, width, font_sz);
 	font_sz = fit_font_size(cr, ram_str, width, font_sz);
 
+	// Process name is rendered at 65% of the main font size, dimmed
+	double proc_font_sz = font_sz * 0.65;
+	if (cpu_proc[0])
+		proc_font_sz = fit_font_size(cr, cpu_proc, width, proc_font_sz);
+	if (ram_proc[0])
+		proc_font_sz = fit_font_size(cr, ram_proc, width, proc_font_sz);
+
 	int mid = height / 2;
-	double cpu_baseline = mid * 0.82;
-	double ram_baseline = mid + (height - mid) * 0.82;
+
+	// Each half is split: percentage at ~60%, process name at ~88%
+	double cpu_baseline = mid * 0.60;
+	double cpu_proc_baseline = mid * 0.88;
+	double ram_baseline = mid + (height - mid) * 0.60;
+	double ram_proc_baseline = mid + (height - mid) * 0.88;
 
 	draw_centered_text(cr, width, cpu_str, cpu_baseline, font_sz, cpu_col);
 	draw_centered_text(cr, width, ram_str, ram_baseline, font_sz, ram_col);
+
+	// Process names: same hue as their line but at 60% alpha
+	unsigned int cpu_proc_col = (cpu_col & 0x00FFFFFF) | 0x99000000;
+	unsigned int ram_proc_col = (ram_col & 0x00FFFFFF) | 0x99000000;
+
+	cairo_select_font_face(cr, "monospace", CAIRO_FONT_SLANT_NORMAL,
+		CAIRO_FONT_WEIGHT_NORMAL);
+	draw_centered_text(cr, width, cpu_proc, cpu_proc_baseline, proc_font_sz,
+		cpu_proc_col);
+	draw_centered_text(cr, width, ram_proc, ram_proc_baseline, proc_font_sz,
+		ram_proc_col);
 
 	cairo_destroy(cr);
 	cairo_surface_destroy(cs);
@@ -339,6 +536,10 @@ sysinfo_widget_needs_repaint(int *last_second, int percpu)
 	int rp = read_ram_pct();
 	if (rp >= 0)
 		g_si.ram_pct = rp;
+
+	// --- Top processes ---
+	read_top_cpu_proc(g_si.cpu_proc, sizeof(g_si.cpu_proc));
+	read_top_ram_proc(g_si.ram_proc, sizeof(g_si.ram_proc));
 
 	snprintf(g_si.cpu_label, sizeof(g_si.cpu_label), "CPU %3d%%", g_si.cpu_pct);
 	snprintf(g_si.ram_label, sizeof(g_si.ram_label), "RAM %3d%%", g_si.ram_pct);

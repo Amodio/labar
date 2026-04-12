@@ -712,7 +712,7 @@ write_config(CfgWin *w)
 			fprintf(fp, "\n[widget-sysinfo]\n");                                 \
 			fprintf(fp,                                                          \
 				"# percpu: true = per-core %% like top, false = system-wide\n"); \
-			fprintf(fp, "percpu=true\n");                                        \
+			fprintf(fp, "percpu=%s\n", c->sysinfo_percpu ? "true" : "false");    \
 			fprintf(fp, "# cpu-color: color for the CPU usage line\n");          \
 			fprint_color(fp, "cpu-color",                                        \
 				c->sysinfo_cpu_color ? c->sysinfo_cpu_color : 0xFFFFEB3B);       \
