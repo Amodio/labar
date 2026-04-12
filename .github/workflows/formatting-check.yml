@@ -15,16 +15,16 @@ jobs:
       # -------------------------
       # 1️⃣ Checkout repository
       # -------------------------
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # -------------------------
       # 2️⃣ Clang-format style check
       # https://github.com/marketplace/actions/clang-format-check
       # -------------------------
       - name: Run clang-format style check for C/C++/Protobuf
-        uses: jidicula/clang-format-action@v4.16.0
+        uses: jidicula/clang-format-action@v4.18.0
         with:
-          clang-format-version: '21'
+          clang-format-version: '22'
           check-path: 'src'
 
       # -------------------------
