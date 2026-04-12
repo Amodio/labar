@@ -1,5 +1,5 @@
 project('labar', 'c',
-  version: '1.1.1',
+  version: '1.2.0',
   default_options: [
     'prefix=/usr',
     'c_std=c11',
@@ -10,7 +10,6 @@ project('labar', 'c',
 
 cc = meson.get_compiler('c')
 
-# All add_project_arguments() calls must come before any build target.
 add_project_arguments(
   '-DVERSION="' + meson.project_name() + ' ' + meson.project_version() + '"',
   language: 'c'
