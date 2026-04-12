@@ -97,7 +97,6 @@ sudo meson install -C build/
 ```bash
 CC=clang meson setup build-debug/ -Db_lundef=false
 meson compile -C build-debug/
-sudo meson install -C build-debug/
 ```
 
 Sanitizers ([Address](https://clang.llvm.org/docs/AddressSanitizer.html),
