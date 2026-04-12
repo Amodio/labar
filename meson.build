@@ -4,7 +4,7 @@ project('labar', 'c',
     'prefix=/usr',
     'c_std=c11',
     'warning_level=3',
-    'strip=true'
+    'b_sanitize=address,undefined',  # ASan/LSan/UBSan -> on by default
     ]
 )
 
@@ -75,9 +75,18 @@ subdir('doc')
 # Uses pixmap_dir
 subdir('pixmaps')
 
+# Forbid {Address,Leak,UndefinedBehavior}Sanitizers in release build
+if get_option('buildtype') == 'release'
+  if get_option('b_sanitize') != 'none'
+    error('ASan/LSan/UBSan are not meant to be used in production')
+  endif
+  # Strip the binary
+  add_project_link_arguments('-s', language: 'c')
+endif
+
 # Main executable
 executable(
-  'labar',
+  meson.project_name(),
   sources,
   dependencies: deps,
   install: true,

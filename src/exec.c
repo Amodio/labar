@@ -156,6 +156,11 @@ expand_field_codes(DesktopEntry *app, char ***argvp, int *argcp)
 	newv = realloc(newv, sizeof(char *) * (newc + 1));
 	newv[newc] = NULL;
 
+	// free original argv entries, they've all been strdup'd into newv
+	for (int i = 0; i < argc; i++)
+		free(argv[i]);
+	free(argv); // free the old array itself too
+
 	*argvp = newv;
 	*argcp = newc;
 

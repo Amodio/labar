@@ -8,6 +8,7 @@
 #include <locale.h>
 #include <math.h>
 #include <poll.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -95,6 +96,13 @@ static struct output_info {
 	uint32_t registry_name; // Wayland global name for removal
 } outputs[MAX_OUTPUTS];
 static int n_outputs = 0;
+
+static void
+handle_sigterm(int sig)
+{
+	(void)sig;
+	exit(0); // triggers LSan via atexit hooks
+}
 
 // ---------------------------------------------------------------------------
 // Layer-surface state
@@ -1794,6 +1802,8 @@ main(int argc, char *argv[])
 {
 	// Apply the user's locale so strftime() produces localised day/month names
 	setlocale(LC_TIME, "");
+	// For running LSan's leak check phase
+	signal(SIGTERM, handle_sigterm);
 
 	// Parse command-line arguments
 	int opt;

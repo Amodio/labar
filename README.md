@@ -74,19 +74,96 @@ https://wayland.app/protocols/wlr-layer-shell-unstable-v1#compositor-support)**.
 On Debian:
 ```bash
 sudo apt install meson pkgconf cmake libwayland-dev wayland-protocols \
-libcairo2-dev librsvg2-dev libasound2-dev scdoc
+libcairo2-dev librsvg2-dev libasound2-dev scdoc clang
 sudo apt install libgtk-4-dev # if you want the --config option
+```
+
+On Alpine Linux:
+```bash
+apk add meson pkgconf cmake wayland-dev wayland-protocols cairo-dev \
+librsvg-dev alsa-lib-dev scdoc clang22-dev compiler-rt
+apk add gtk4.0-dev # if you want the --config option
 ```
 
 ## Installation
 
 ```bash
-meson setup build/
-#meson compile -C build/
+meson setup build/ --buildtype=release -Db_sanitize=none
 sudo meson install -C build/
 ```
 
-The GTK4 config editor (`--config`) is built automatically if `gtk4` is found.
+## For developers
+
+```bash
+CC=clang meson setup build-debug/ -Db_lundef=false
+meson compile -C build-debug/
+sudo meson install -C build-debug/
+```
+
+Sanitizers ([Address](https://clang.llvm.org/docs/AddressSanitizer.html),
+[Leak](https://clang.llvm.org/docs/AddressSanitizer.html),
+[Undefined Behavior](
+https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html))
+will be embedded in the binary, as well as debug symbols.
+
+You may combine below env. variables:
+```bash
+ASAN_SYMBOLIZER_PATH=/usr/lib/llvm22/bin/llvm-symbolizer             \
+ASAN_OPTIONS=check_initialization_order=1                            \
+LSAN_OPTIONS=suppressions=lsan.supp:report_objects=1:use_unaligned=1 \
+UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./build-debug/labar
+```
+
+#### `ASAN_OPTIONS`
+
+| Variable | Default | Description |
+|---|---|---|
+| `detect_leaks` | `1` on Linux | Enable LeakSanitizer |
+| `detect_stack_use_after_return` | `1` on Linux | Detect stack use after ret |
+| `check_initialization_order` | `0` | Detect dynamic init order issues |
+| `suppressions` | — | Path to suppression file |
+| `symbolize` | `1` | Symbolize reports (disable with `0` for offline use) |
+```bash
+ASAN_OPTIONS=detect_leaks=1:check_initialization_order=1:suppressions=asan.supp
+./labar
+```
+
+Suppression file format:
+```
+interceptor_via_fun:NameOfCFunctionToSuppress
+interceptor_via_lib:NameOfTheLibraryToSuppress
+```
+
+#### `LSAN_OPTIONS`
+
+| Variable | Default | Description |
+|---|---|---|
+| `exitcode` | `23` | When leaks are detected (can differ from ASan's) |
+| `max_leaks` | `0` | If non-zero, report only this many top leaks |
+| `suppressions` | — | Path to suppression file |
+| `print_suppressions` | `1` | Print statistics for matched suppressions |
+| `report_objects` | `0` | Report addresses of individual leaked objects |
+| `use_unaligned` | `0` | Also scan unaligned 8-byte patterns for pointers |
+```bash
+LSAN_OPTIONS=suppressions=lsan.supp:report_objects=1:use_unaligned=1 ./labar
+```
+
+#### `UBSAN_OPTIONS`
+
+| Variable | Default | Description |
+|---|---|---|
+| `print_stacktrace` | `0` | Print stack trace on each error |
+| `halt_on_error` | `0` | Stop on first error (like ASan) |
+| `suppressions` | — | Path to suppression file |
+```bash
+UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./labar
+```
+
+For readable stack traces across all sanitizers, ensure `llvm-symbolizer` is 
+in your `$PATH`, or set:
+```bash
+ASAN_SYMBOLIZER_PATH=/usr/lib/llvm22/bin/llvm-symbolizer
+```
 
 ## Usage
 
