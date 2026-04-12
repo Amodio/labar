@@ -88,7 +88,7 @@ sudo apk add gtk4.0-dev # if you want the --config option
 ## Installation
 
 ```bash
-meson setup build/ --buildtype=release -Db_sanitize=none -Db_lundef=false
+meson setup build/ --buildtype=release -Db_sanitize=none
 sudo meson install -C build/
 ```
 
