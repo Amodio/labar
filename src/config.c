@@ -521,6 +521,7 @@ parse_config_file(FILE *fp)
 	cfg.output_name = NULL;			   // Use compositor default output
 	cfg.show_date = 0;				   // Date widget off by default
 	cfg.show_sysinfo = 1;			   // Sysinfo widget on by default
+	cfg.sysinfo_percpu = 1;			   // top-style (unnormalized) by default
 	cfg.sysinfo_cpu_color = 0;		   // Falls back to WIDGET_SYSINFO_CPU_COLOR
 	cfg.sysinfo_ram_color = 0;		   // Falls back to WIDGET_SYSINFO_RAM_COLOR
 	cfg.sysinfo_font_size = 0;		   // Falls back to WIDGET_SYSINFO_FONT_SIZE
@@ -872,7 +873,11 @@ parse_config_file(FILE *fp)
 
 		// Handle [widget-sysinfo] section
 		if (in_widget_sysinfo_section) {
-			if (strcmp(key, "cpu-color") == 0) {
+			if (strcmp(key, "percpu") == 0) {
+				cfg.sysinfo_percpu = (strcmp(value, "true") == 0);
+				if (verbose >= 2)
+					printf("[DBG²]   sysinfo percpu: %s\n", value);
+			} else if (strcmp(key, "cpu-color") == 0) {
 				const char *hex = value;
 				if (hex[0] == '#')
 					hex++;
@@ -1324,6 +1329,8 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp, "# show-date: show the date/time widget (last slot)\n");
 	fprintf(fp, "show-date=true\n");
 	fprintf(fp, "\n[widget-sysinfo]\n");
+	fprintf(fp, "# percpu: true = per-core %% like top, false = system-wide\n");
+	fprintf(fp, "percpu=true\n");
 	fprintf(fp, "# cpu-color: color for the CPU usage line\n");
 	fprintf(fp, "cpu-color=#FFEB3B\n");
 	fprintf(fp, "# ram-color: color for the RAM usage line\n");

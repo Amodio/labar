@@ -63,7 +63,12 @@ void sysinfo_draw_tile(uint32_t *data, int width, int height, const Config *cfg,
 // Sample /proc/stat and /proc/meminfo, update internal state.
 // Returns 1 when the second has changed (always true after ≥ 1 s), 0 otherwise.
 // Pass *last_second = -1 on first call to force an immediate repaint.
+//
+// percpu: if non-zero, CPU% is multiplied by the number of logical cores so
+//         that one fully-loaded core shows 100% (matches top's per-process
+//         style). If zero, shows system-wide aggregate (one core at 100% on
+//         a 12-core machine shows ~8%).
 // ---------------------------------------------------------------------------
-int sysinfo_widget_needs_repaint(int *last_second);
+int sysinfo_widget_needs_repaint(int *last_second, int percpu);
 
 #endif /* WIDGET_SYSINFO_H */

@@ -191,5 +191,3 @@ To use the pre-commit hook locally (coding style checks), run once:
 ```bash
 ./scripts/install-hooks.sh
 ```
-
-TODO: fix bug with cpu counter not fully working + pid name

@@ -334,6 +334,7 @@ struct _CfgWin {
 	GtkSpinButton *sysinfo_size_spin;
 	GtkColorDialogButton *sysinfo_bg_color_btn;
 	GtkEntry *sysinfo_exec_entry;
+	GtkCheckButton *sysinfo_percpu_check;
 
 	/* Apps */
 	GtkBox *apps_box;
@@ -618,6 +619,9 @@ write_config(CfgWin *w)
 			gtk_editable_get_text(GTK_EDITABLE(w->sysinfo_exec_entry));
 		c->sysinfo_exec = (v && v[0]) ? strdup(v) : NULL;
 	}
+	if (w->sysinfo_percpu_check)
+		c->sysinfo_percpu =
+			gtk_check_button_get_active(w->sysinfo_percpu_check);
 
 	char *ddf =
 		strdup(gtk_editable_get_text(GTK_EDITABLE(w->date_date_format_entry)));
@@ -702,124 +706,127 @@ write_config(CfgWin *w)
 	 * WIDGET_ID_APPS (2) triggers the [apps] block. */
 	static const char *wnames[5] = {"sysinfo", "net", "apps", "volume", "date"};
 
-#define EMIT_WIDGET_SECTION(wid)                                               \
-	do {                                                                       \
-		if ((wid) == 0) {                                                      \
-			fprintf(fp, "\n[widget-sysinfo]\n");                               \
-			fprintf(fp, "# cpu-color: color for the CPU usage line\n");        \
-			fprint_color(fp, "cpu-color",                                      \
-				c->sysinfo_cpu_color ? c->sysinfo_cpu_color : 0xFFFFEB3B);     \
-			fprintf(fp, "# ram-color: color for the RAM usage line\n");        \
-			fprint_color(fp, "ram-color",                                      \
-				c->sysinfo_ram_color ? c->sysinfo_ram_color : 0xFF66BB6A);     \
-			fprintf(fp, "# size: font size in pt\n");                          \
-			fprintf(fp, "size=%d\n",                                           \
-				c->sysinfo_font_size > 0 ? c->sysinfo_font_size : 14);         \
-			fprintf(fp, "# bg-color: tile background color (#RRGGBBAA)\n");    \
-			fprintf(fp, "#   #00000094 = black 42%% transparent (default)\n"); \
-			fprintf(fp, "#   #00000000 = fully transparent\n");                \
-			fprint_color(fp, "bg-color",                                       \
-				c->sysinfo_bg_color ? c->sysinfo_bg_color : 0x94000000);       \
-			fprintf(fp,                                                        \
-				"# exec: command to run on left-click"                         \
-				" (empty to disable)\n");                                      \
-			fprintf(fp, "exec=%s\n", c->sysinfo_exec ? c->sysinfo_exec : "");  \
-		} else if ((wid) == 1) {                                               \
-			fprintf(fp, "\n[widget-net]\n");                                   \
-			fprintf(fp,                                                        \
-				"# iface: network interface to monitor"                        \
-				" (omit for auto-detect)\n");                                  \
-			if (c->net_iface && c->net_iface[0])                               \
-				fprintf(fp, "iface=%s\n", c->net_iface);                       \
-			else                                                               \
-				fprintf(fp, "# iface=eth0\n");                                 \
-			fprintf(fp,                                                        \
-				"# rx-color: color for the receive (down) speed line\n");      \
-			fprint_color(fp, "rx-color",                                       \
-				c->net_rx_color ? c->net_rx_color : 0xFFFF3FFA);               \
-			fprintf(fp,                                                        \
-				"# tx-color: color for the transmit (up) speed line\n");       \
-			fprint_color(fp, "tx-color",                                       \
-				c->net_tx_color ? c->net_tx_color : 0xFF3AFFFD);               \
-			fprintf(fp, "# size: font size in pt for the speed lines\n");      \
-			fprintf(fp, "size=%d\n",                                           \
-				c->net_font_size > 0 ? c->net_font_size : 14);                 \
-			fprintf(fp, "# bg-color: tile background color (#RRGGBBAA)\n");    \
-			fprintf(fp, "#   #00000094 = black 42%% transparent (default)\n"); \
-			fprintf(fp, "#   #00000000 = fully transparent\n");                \
-			fprint_color(fp, "bg-color",                                       \
-				c->net_bg_color ? c->net_bg_color : 0x94000000);               \
-		} else if ((wid) == 2) {                                               \
-			fprintf(fp, "\n[apps]\n");                                         \
-			GtkWidget *_ch =                                                   \
-				gtk_widget_get_first_child(GTK_WIDGET(w->apps_box));           \
-			while (_ch) {                                                      \
-				GtkWidget *_ne =                                               \
-					g_object_get_data(G_OBJECT(_ch), "name_entry");            \
-				GtkWidget *_ie =                                               \
-					g_object_get_data(G_OBJECT(_ch), "icon_entry");            \
-				GtkWidget *_ee =                                               \
-					g_object_get_data(G_OBJECT(_ch), "exec_entry");            \
-				GtkWidget *_tcb =                                              \
-					g_object_get_data(G_OBJECT(_ch), "terminal_check");        \
-				if (_ne && _ie && _ee) {                                       \
-					const char *_nm =                                          \
-						gtk_editable_get_text(GTK_EDITABLE(_ne));              \
-					const char *_ic =                                          \
-						gtk_editable_get_text(GTK_EDITABLE(_ie));              \
-					const char *_ex =                                          \
-						gtk_editable_get_text(GTK_EDITABLE(_ee));              \
-					int _tr = _tcb ?                                           \
-						gtk_check_button_get_active(GTK_CHECK_BUTTON(_tcb)) :  \
-						0;                                                     \
-					if (_nm && _nm[0] && _ic && _ic[0] && _ex && _ex[0]) {     \
-						fprintf(fp, "name=%s\n", _nm);                         \
-						fprintf(fp, "icon=%s\n", _ic);                         \
-						if (_tr)                                               \
-							fprintf(fp, "terminal=true\n");                    \
-						fprintf(fp, "exec=%s\n\n", _ex);                       \
-					}                                                          \
-				}                                                              \
-				_ch = gtk_widget_get_next_sibling(_ch);                        \
-			}                                                                  \
-		} else if ((wid) == 3) {                                               \
-			fprintf(fp, "\n[widget-volume]\n");                                \
-			fprintf(fp,                                                        \
-				"# exec: command to run on right-click"                        \
-				" (empty to disable)\n");                                      \
-			fprintf(fp, "exec=%s\n", c->volume_exec ? c->volume_exec : "");    \
-		} else if ((wid) == 4) {                                               \
-			fprintf(fp, "\n[widget-date]\n");                                  \
-			fprintf(fp, "# Date line (upper half of the tile)\n");             \
-			fprintf(fp,                                                        \
-				"# format: strftime(3) format string,"                         \
-				" e.g. \"%%a %%d %%B\"\n");                                    \
-			fprintf(fp, "format=%s\n",                                         \
-				c->date_date_format && c->date_date_format[0] ?                \
-					c->date_date_format :                                      \
-					"%a %d %B");                                               \
-			fprint_color(fp, "color",                                          \
-				c->date_date_color ? c->date_date_color : 0xFF68FF3A);         \
-			fprintf(fp, "size=%d\n",                                           \
-				c->date_date_size > 0 ? c->date_date_size : 16);               \
-			fprintf(fp, "# Time line (lower half of the tile)\n");             \
-			fprintf(fp,                                                        \
-				"# time-format: strftime(3) format string,"                    \
-				" e.g. \"%%H:%%M\"\n");                                        \
-			fprintf(fp, "time-format=%s\n",                                    \
-				c->date_time_format && c->date_time_format[0] ?                \
-					c->date_time_format :                                      \
-					"%H:%M");                                                  \
-			fprint_color(fp, "time-color",                                     \
-				c->date_time_color ? c->date_time_color : 0xFFFF0000);         \
-			fprintf(fp, "time-size=%d\n",                                      \
-				c->date_time_size > 0 ? c->date_time_size : 36);               \
-			fprintf(fp, "# bg-color: tile background color (#RRGGBBAA)\n");    \
-			fprintf(fp, "#   #00000094 = black 42%% transparent (default)\n"); \
-			fprintf(fp, "#   #00000000 = fully transparent\n");                \
-			fprint_color(fp, "bg-color",                                       \
-				c->date_bg_color ? c->date_bg_color : 0x94000000);             \
-		}                                                                      \
+#define EMIT_WIDGET_SECTION(wid)                                                 \
+	do {                                                                         \
+		if ((wid) == 0) {                                                        \
+			fprintf(fp, "\n[widget-sysinfo]\n");                                 \
+			fprintf(fp,                                                          \
+				"# percpu: true = per-core %% like top, false = system-wide\n"); \
+			fprintf(fp, "percpu=true\n");                                        \
+			fprintf(fp, "# cpu-color: color for the CPU usage line\n");          \
+			fprint_color(fp, "cpu-color",                                        \
+				c->sysinfo_cpu_color ? c->sysinfo_cpu_color : 0xFFFFEB3B);       \
+			fprintf(fp, "# ram-color: color for the RAM usage line\n");          \
+			fprint_color(fp, "ram-color",                                        \
+				c->sysinfo_ram_color ? c->sysinfo_ram_color : 0xFF66BB6A);       \
+			fprintf(fp, "# size: font size in pt\n");                            \
+			fprintf(fp, "size=%d\n",                                             \
+				c->sysinfo_font_size > 0 ? c->sysinfo_font_size : 14);           \
+			fprintf(fp, "# bg-color: tile background color (#RRGGBBAA)\n");      \
+			fprintf(fp, "#   #00000094 = black 42%% transparent (default)\n");   \
+			fprintf(fp, "#   #00000000 = fully transparent\n");                  \
+			fprint_color(fp, "bg-color",                                         \
+				c->sysinfo_bg_color ? c->sysinfo_bg_color : 0x94000000);         \
+			fprintf(fp,                                                          \
+				"# exec: command to run on left-click"                           \
+				" (empty to disable)\n");                                        \
+			fprintf(fp, "exec=%s\n", c->sysinfo_exec ? c->sysinfo_exec : "");    \
+		} else if ((wid) == 1) {                                                 \
+			fprintf(fp, "\n[widget-net]\n");                                     \
+			fprintf(fp,                                                          \
+				"# iface: network interface to monitor"                          \
+				" (omit for auto-detect)\n");                                    \
+			if (c->net_iface && c->net_iface[0])                                 \
+				fprintf(fp, "iface=%s\n", c->net_iface);                         \
+			else                                                                 \
+				fprintf(fp, "# iface=eth0\n");                                   \
+			fprintf(fp,                                                          \
+				"# rx-color: color for the receive (down) speed line\n");        \
+			fprint_color(fp, "rx-color",                                         \
+				c->net_rx_color ? c->net_rx_color : 0xFFFF3FFA);                 \
+			fprintf(fp,                                                          \
+				"# tx-color: color for the transmit (up) speed line\n");         \
+			fprint_color(fp, "tx-color",                                         \
+				c->net_tx_color ? c->net_tx_color : 0xFF3AFFFD);                 \
+			fprintf(fp, "# size: font size in pt for the speed lines\n");        \
+			fprintf(fp, "size=%d\n",                                             \
+				c->net_font_size > 0 ? c->net_font_size : 14);                   \
+			fprintf(fp, "# bg-color: tile background color (#RRGGBBAA)\n");      \
+			fprintf(fp, "#   #00000094 = black 42%% transparent (default)\n");   \
+			fprintf(fp, "#   #00000000 = fully transparent\n");                  \
+			fprint_color(fp, "bg-color",                                         \
+				c->net_bg_color ? c->net_bg_color : 0x94000000);                 \
+		} else if ((wid) == 2) {                                                 \
+			fprintf(fp, "\n[apps]\n");                                           \
+			GtkWidget *_ch =                                                     \
+				gtk_widget_get_first_child(GTK_WIDGET(w->apps_box));             \
+			while (_ch) {                                                        \
+				GtkWidget *_ne =                                                 \
+					g_object_get_data(G_OBJECT(_ch), "name_entry");              \
+				GtkWidget *_ie =                                                 \
+					g_object_get_data(G_OBJECT(_ch), "icon_entry");              \
+				GtkWidget *_ee =                                                 \
+					g_object_get_data(G_OBJECT(_ch), "exec_entry");              \
+				GtkWidget *_tcb =                                                \
+					g_object_get_data(G_OBJECT(_ch), "terminal_check");          \
+				if (_ne && _ie && _ee) {                                         \
+					const char *_nm =                                            \
+						gtk_editable_get_text(GTK_EDITABLE(_ne));                \
+					const char *_ic =                                            \
+						gtk_editable_get_text(GTK_EDITABLE(_ie));                \
+					const char *_ex =                                            \
+						gtk_editable_get_text(GTK_EDITABLE(_ee));                \
+					int _tr = _tcb ?                                             \
+						gtk_check_button_get_active(GTK_CHECK_BUTTON(_tcb)) :    \
+						0;                                                       \
+					if (_nm && _nm[0] && _ic && _ic[0] && _ex && _ex[0]) {       \
+						fprintf(fp, "name=%s\n", _nm);                           \
+						fprintf(fp, "icon=%s\n", _ic);                           \
+						if (_tr)                                                 \
+							fprintf(fp, "terminal=true\n");                      \
+						fprintf(fp, "exec=%s\n\n", _ex);                         \
+					}                                                            \
+				}                                                                \
+				_ch = gtk_widget_get_next_sibling(_ch);                          \
+			}                                                                    \
+		} else if ((wid) == 3) {                                                 \
+			fprintf(fp, "\n[widget-volume]\n");                                  \
+			fprintf(fp,                                                          \
+				"# exec: command to run on right-click"                          \
+				" (empty to disable)\n");                                        \
+			fprintf(fp, "exec=%s\n", c->volume_exec ? c->volume_exec : "");      \
+		} else if ((wid) == 4) {                                                 \
+			fprintf(fp, "\n[widget-date]\n");                                    \
+			fprintf(fp, "# Date line (upper half of the tile)\n");               \
+			fprintf(fp,                                                          \
+				"# format: strftime(3) format string,"                           \
+				" e.g. \"%%a %%d %%B\"\n");                                      \
+			fprintf(fp, "format=%s\n",                                           \
+				c->date_date_format && c->date_date_format[0] ?                  \
+					c->date_date_format :                                        \
+					"%a %d %B");                                                 \
+			fprint_color(fp, "color",                                            \
+				c->date_date_color ? c->date_date_color : 0xFF68FF3A);           \
+			fprintf(fp, "size=%d\n",                                             \
+				c->date_date_size > 0 ? c->date_date_size : 16);                 \
+			fprintf(fp, "# Time line (lower half of the tile)\n");               \
+			fprintf(fp,                                                          \
+				"# time-format: strftime(3) format string,"                      \
+				" e.g. \"%%H:%%M\"\n");                                          \
+			fprintf(fp, "time-format=%s\n",                                      \
+				c->date_time_format && c->date_time_format[0] ?                  \
+					c->date_time_format :                                        \
+					"%H:%M");                                                    \
+			fprint_color(fp, "time-color",                                       \
+				c->date_time_color ? c->date_time_color : 0xFFFF0000);           \
+			fprintf(fp, "time-size=%d\n",                                        \
+				c->date_time_size > 0 ? c->date_time_size : 36);                 \
+			fprintf(fp, "# bg-color: tile background color (#RRGGBBAA)\n");      \
+			fprintf(fp, "#   #00000094 = black 42%% transparent (default)\n");   \
+			fprintf(fp, "#   #00000000 = fully transparent\n");                  \
+			fprint_color(fp, "bg-color",                                         \
+				c->date_bg_color ? c->date_bg_color : 0x94000000);               \
+		}                                                                        \
 	} while (0)
 
 	for (int _i = 0; _i < 5; _i++)
@@ -1240,6 +1247,9 @@ harvest_widget_fields(CfgWin *w)
 			gtk_editable_get_text(GTK_EDITABLE(w->sysinfo_exec_entry));
 		w->cfg.sysinfo_exec = (v && v[0]) ? strdup(v) : NULL;
 	}
+	if (w->sysinfo_percpu_check)
+		w->cfg.sysinfo_percpu =
+			gtk_check_button_get_active(w->sysinfo_percpu_check);
 }
 
 static void
@@ -1387,7 +1397,59 @@ make_widget_row(CfgWin *w, int pos)
 	int r = 0;
 
 	switch (wid) {
-	case 0: { /* Net */
+	case 0: { /* Sysinfo */
+		w->show_sysinfo_check = cb;
+
+		w->sysinfo_cpu_color_btn = make_color_btn(w->color_dialog,
+			w->cfg.sysinfo_cpu_color ? w->cfg.sysinfo_cpu_color : 0xFFFFEB3B);
+		grid_row(GTK_GRID(sg), r++,
+			"CPU color:", GTK_WIDGET(w->sysinfo_cpu_color_btn));
+		store_signal_pair(frame, G_OBJECT(w->sysinfo_cpu_color_btn),
+			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_cpu_color_btn), w));
+
+		w->sysinfo_ram_color_btn = make_color_btn(w->color_dialog,
+			w->cfg.sysinfo_ram_color ? w->cfg.sysinfo_ram_color : 0xFF66BB6A);
+		grid_row(GTK_GRID(sg), r++,
+			"RAM color:", GTK_WIDGET(w->sysinfo_ram_color_btn));
+		store_signal_pair(frame, G_OBJECT(w->sysinfo_ram_color_btn),
+			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_ram_color_btn), w));
+
+		w->sysinfo_size_spin = make_spin(4, 128,
+			w->cfg.sysinfo_font_size > 0 ? w->cfg.sysinfo_font_size : 14);
+		grid_row(GTK_GRID(sg), r++,
+			"Font size (pt):", GTK_WIDGET(w->sysinfo_size_spin));
+		store_signal_pair(frame, G_OBJECT(w->sysinfo_size_spin),
+			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_size_spin), w));
+
+		w->sysinfo_bg_color_btn = make_color_btn(w->color_dialog,
+			w->cfg.sysinfo_bg_color ? w->cfg.sysinfo_bg_color : 0x94000000);
+		grid_row(GTK_GRID(sg), r++,
+			"Tile background:", GTK_WIDGET(w->sysinfo_bg_color_btn));
+		store_signal_pair(frame, G_OBJECT(w->sysinfo_bg_color_btn),
+			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_bg_color_btn), w));
+
+		w->sysinfo_exec_entry = GTK_ENTRY(gtk_entry_new());
+		gtk_editable_set_text(GTK_EDITABLE(w->sysinfo_exec_entry),
+			w->cfg.sysinfo_exec ? w->cfg.sysinfo_exec : "");
+		gtk_entry_set_placeholder_text(w->sysinfo_exec_entry,
+			"empty to disable");
+		gtk_widget_set_hexpand(GTK_WIDGET(w->sysinfo_exec_entry), TRUE);
+		grid_row(GTK_GRID(sg), r++,
+			"Left-click command:", GTK_WIDGET(w->sysinfo_exec_entry));
+		store_signal_pair(frame, G_OBJECT(w->sysinfo_exec_entry),
+			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_exec_entry), w));
+
+		w->sysinfo_percpu_check = GTK_CHECK_BUTTON(
+			gtk_check_button_new_with_label("Busiest core % (top-style)"));
+		gtk_check_button_set_active(w->sysinfo_percpu_check,
+			w->cfg.sysinfo_percpu);
+		grid_row(GTK_GRID(sg), r++,
+			"CPU mode:", GTK_WIDGET(w->sysinfo_percpu_check));
+		store_signal_pair(frame, G_OBJECT(w->sysinfo_percpu_check),
+			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_percpu_check), w));
+		break;
+	}
+	case 1: { /* Net */
 		w->show_net_check = cb;
 
 		w->net_iface_entry = GTK_ENTRY(gtk_entry_new());
@@ -1429,7 +1491,10 @@ make_widget_row(CfgWin *w, int pos)
 			connect_mark_unsaved(GTK_WIDGET(w->net_bg_color_btn), w));
 		break;
 	}
-	case 1: { /* Volume */
+	case 2: /* Apps — no sub-settings; checkbox is non-interactive */
+		gtk_widget_set_sensitive(GTK_WIDGET(cb), FALSE);
+		break;
+	case 3: { /* Volume */
 		w->show_volume_check = cb;
 
 		w->volume_exec_entry = GTK_ENTRY(gtk_entry_new());
@@ -1444,53 +1509,7 @@ make_widget_row(CfgWin *w, int pos)
 			connect_mark_unsaved(GTK_WIDGET(w->volume_exec_entry), w));
 		break;
 	}
-	case 3: /* Apps — no sub-settings; checkbox is non-interactive */
-		gtk_widget_set_sensitive(GTK_WIDGET(cb), FALSE);
-		break;
-	case 4: { /* Sysinfo */
-		w->show_sysinfo_check = cb;
-
-		w->sysinfo_cpu_color_btn = make_color_btn(w->color_dialog,
-			w->cfg.sysinfo_cpu_color ? w->cfg.sysinfo_cpu_color : 0xFFFFEB3B);
-		grid_row(GTK_GRID(sg), r++,
-			"CPU color:", GTK_WIDGET(w->sysinfo_cpu_color_btn));
-		store_signal_pair(frame, G_OBJECT(w->sysinfo_cpu_color_btn),
-			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_cpu_color_btn), w));
-
-		w->sysinfo_ram_color_btn = make_color_btn(w->color_dialog,
-			w->cfg.sysinfo_ram_color ? w->cfg.sysinfo_ram_color : 0xFF66BB6A);
-		grid_row(GTK_GRID(sg), r++,
-			"RAM color:", GTK_WIDGET(w->sysinfo_ram_color_btn));
-		store_signal_pair(frame, G_OBJECT(w->sysinfo_ram_color_btn),
-			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_ram_color_btn), w));
-
-		w->sysinfo_size_spin = make_spin(4, 128,
-			w->cfg.sysinfo_font_size > 0 ? w->cfg.sysinfo_font_size : 14);
-		grid_row(GTK_GRID(sg), r++,
-			"Font size (pt):", GTK_WIDGET(w->sysinfo_size_spin));
-		store_signal_pair(frame, G_OBJECT(w->sysinfo_size_spin),
-			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_size_spin), w));
-
-		w->sysinfo_bg_color_btn = make_color_btn(w->color_dialog,
-			w->cfg.sysinfo_bg_color ? w->cfg.sysinfo_bg_color : 0x94000000);
-		grid_row(GTK_GRID(sg), r++,
-			"Tile background:", GTK_WIDGET(w->sysinfo_bg_color_btn));
-		store_signal_pair(frame, G_OBJECT(w->sysinfo_bg_color_btn),
-			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_bg_color_btn), w));
-
-		w->sysinfo_exec_entry = GTK_ENTRY(gtk_entry_new());
-		gtk_editable_set_text(GTK_EDITABLE(w->sysinfo_exec_entry),
-			w->cfg.sysinfo_exec ? w->cfg.sysinfo_exec : "");
-		gtk_entry_set_placeholder_text(w->sysinfo_exec_entry,
-			"empty to disable");
-		gtk_widget_set_hexpand(GTK_WIDGET(w->sysinfo_exec_entry), TRUE);
-		grid_row(GTK_GRID(sg), r++,
-			"Left-click command:", GTK_WIDGET(w->sysinfo_exec_entry));
-		store_signal_pair(frame, G_OBJECT(w->sysinfo_exec_entry),
-			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_exec_entry), w));
-		break;
-	}
-	case 2: { /* Date */
+	case 4: { /* Date */
 		w->show_date_check = cb;
 
 		w->date_date_format_entry = GTK_ENTRY(gtk_entry_new());

@@ -9,7 +9,7 @@ charset = utf-8
 trim_trailing_whitespace = true
 #indent_style = tab
 indent_size = 4
-max_line_length = 80
+max_line_length = 82
 
 [*.{xml,build,md}]
 indent_style = space

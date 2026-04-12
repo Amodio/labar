@@ -38,3 +38,7 @@ IncludeCategories:
 # Added this to prevent space-based alignment in strings
 BreakStringLiterals: false
 TabWidth: 4
+
+# Try to make clang-format aware of our hard limit...
+ColumnLimit: 80
+AlignConsecutiveMacros: false

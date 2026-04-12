@@ -70,6 +70,7 @@ typedef struct {
 	// CPU / RAM usage widget (sysinfo)
 	// ---------------------------------------------------------------------------
 	int show_sysinfo;				// 1 = show widget, 0 = disabled
+	int sysinfo_percpu;				// 1 = per-core style, 0 = system-wide
 	unsigned int sysinfo_cpu_color; // ARGB color for the CPU line
 	unsigned int sysinfo_ram_color; // ARGB color for the RAM line
 	int sysinfo_font_size;			// font size in pt (0 = use default)

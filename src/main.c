@@ -2224,7 +2224,8 @@ main(int argc, char *argv[])
 
 		// 3c. Repaint sysinfo tile once per second
 		if (app_config.show_sysinfo) {
-			if (sysinfo_widget_needs_repaint(&sysinfo_last_second)) {
+			if (sysinfo_widget_needs_repaint(&sysinfo_last_second,
+					app_config.sysinfo_percpu)) {
 				sysinfo_repaint_tile(surface);
 				wl_display_flush(display);
 			}

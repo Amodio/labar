@@ -79,11 +79,6 @@ app icons → volume widget → date/time widget.
 
 ## [global] keys
 
-*exclusive-zone=*_N_
-	Exclusive zone in pixels to reserve at the bar edge, preventing
-	other surfaces from overlapping. Set to *0* to disable.
-	Default: *64*.
-
 *icon-size=*_N_
 	Icon slot size in pixels (logical). Applies to both width and height
 	of each app slot, and to the cross-axis thickness of the bar.
@@ -91,6 +86,16 @@ app icons → volume widget → date/time widget.
 
 *icon-spacing=*_N_
 	Gap in pixels between icon slots. Default: *0*.
+
+*exclusive-zone=*_N_
+	Exclusive zone in pixels to reserve at the bar edge, preventing
+	other surfaces from overlapping. Set to *0* to disable.
+	Default: *64*.
+
+*border-space=*_N_
+	Distance in pixels between the bar and the screen edge. Implemented
+	via *zwlr_layer_surface_v1.set_margin*; the compositor applies the
+	margin only on the anchored edge. Default: *0*.
 
 *label-mode=*_always_|_hover_|_never_
 	When to show the text label overlay on icons.
@@ -102,12 +107,12 @@ app icons → volume widget → date/time widget.
 	Label text color. Six-digit form is fully opaque; eight-digit form
 	includes an alpha byte. Default: *#FFFFFF* (white, fully opaque).
 
+*label-size=*_N_
+	Label font size in points. Default: *10*.
+
 *label-offset=*_N_
 	Distance in pixels from the bottom edge of the slot to the text
 	baseline. Default: *10*.
-
-*label-size=*_N_
-	Label font size in points. Default: *10*.
 
 *position=*_top_|_bottom_|_left_|_right_
 	Which screen edge to attach the bar to. Default: *bottom*.
@@ -165,6 +170,13 @@ app icons → volume widget → date/time widget.
 	Command to run when the tile is left-clicked. Parsed and launched
 	with *execvp*(3); leave empty to disable click handling.
 	Default: *foot -e btop*.
+
+*percpu=*_true_|_false_
+	CPU display mode. *true* shows the busiest single core percentage,
+	matching top's per-process style (one fully loaded core = 100%,
+	always ≤ 100%). *false* shows the system-wide aggregate across all
+	cores (one core at 100% on a 12-core machine shows ~8%).
+	Default: *true*.
 
 ## [widget-net] keys
 
@@ -267,6 +279,7 @@ Each application is defined by a consecutive block of keys inside an
 exclusive-zone=64
 icon-size=64
 icon-spacing=0
+border-space=0
 label-mode=hover
 label-color=#FFFFFF
 label-offset=10
@@ -287,6 +300,7 @@ ram-color=#66BB6A
 size=14
 bg-color=#00000094
 exec=foot -e btop
+percpu=true
 
 [widget-net]
 # iface=eth0

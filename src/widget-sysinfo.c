@@ -14,20 +14,31 @@
 extern int verbose;
 extern int buffer_scale;
 
+#define MAX_CORES 512
+
 // ---------------------------------------------------------------------------
 // Internal state
 // ---------------------------------------------------------------------------
 typedef struct {
-	// CPU idle accounting (from /proc/stat, "cpu" aggregate line)
+	// CPU idle accounting — aggregate line (system-wide mode)
 	long long prev_idle;
 	long long prev_total;
-	// Last computed usage percentages (0–100)
+	// Per-core idle accounting (percpu mode) — avoids aggregate×ncpu rounding
+	long long prev_core_idle[MAX_CORES];
+	long long prev_core_total[MAX_CORES];
+	// Last computed usage percentages
 	int cpu_pct;
 	int ram_pct;
-	// Cached label strings
-	char cpu_label[16];
+	// Cached label strings (cpu_label needs room for percpu values e.g. "CPU
+	// 1200%")
+	char cpu_label[20];
 	char ram_label[16];
 	int initialized;
+	// Number of logical CPU cores (counted from /proc/stat cpu0, cpu1, ...)
+	int ncpu;
+	// Per-CPU mode: if 1, cpu_pct is the busiest single core % (max across
+	// cores)
+	int percpu;
 } SysinfoState;
 
 static SysinfoState g_si = {0};
@@ -37,7 +48,10 @@ static SysinfoState g_si = {0};
 // ---------------------------------------------------------------------------
 
 /*
- * read_cpu_times — parse the first "cpu" line of /proc/stat.
+ * read_cpu_times — parse /proc/stat.
+ *
+ * If core < 0, reads the aggregate "cpu " line (system-wide).
+ * If core >= 0, reads the "cpuN" line for that specific core.
  * Returns 0 on success, fills *idle_out and *total_out.
  */
 static int
@@ -52,8 +66,6 @@ read_cpu_times(long long *idle_out, long long *total_out)
 	while (fgets(line, sizeof(line), fp)) {
 		if (strncmp(line, "cpu ", 4) != 0)
 			continue;
-		// Fields: user nice system idle iowait irq softirq steal guest
-		// guest_nice
 		long long f[10] = {0};
 		sscanf(line + 4, "%lld %lld %lld %lld %lld %lld %lld %lld %lld %lld",
 			&f[0], &f[1], &f[2], &f[3], &f[4], &f[5], &f[6], &f[7], &f[8],
@@ -67,6 +79,40 @@ read_cpu_times(long long *idle_out, long long *total_out)
 	}
 	fclose(fp);
 	return found ? 0 : -1;
+}
+
+/*
+ * read_all_cpu_times — read per-core idle/total from /proc/stat.
+ * Fills arrays of length *ncpu_out (allocated by caller, max MAX_CORES).
+ * Returns number of cores found.
+ */
+static int
+read_all_cpu_times(long long *idles, long long *totals, int max_cores)
+{
+	FILE *fp = fopen("/proc/stat", "r");
+	if (!fp)
+		return 0;
+
+	char line[256];
+	int n = 0;
+	while (fgets(line, sizeof(line), fp) && n < max_cores) {
+		// Match "cpuN " lines (per-core), skip the aggregate "cpu " line
+		if (strncmp(line, "cpu", 3) != 0 || line[3] == ' ')
+			continue;
+		long long f[10] = {0};
+		char *p = line + 3;
+		while (*p && *p != ' ')
+			p++; // skip the core number
+		sscanf(p, "%lld %lld %lld %lld %lld %lld %lld %lld %lld %lld", &f[0],
+			&f[1], &f[2], &f[3], &f[4], &f[5], &f[6], &f[7], &f[8], &f[9]);
+		idles[n] = f[3] + f[4];
+		totals[n] = 0;
+		for (int i = 0; i < 10; i++)
+			totals[n] += f[i];
+		n++;
+	}
+	fclose(fp);
+	return n;
 }
 
 /*
@@ -110,12 +156,19 @@ sysinfo_widget_init(void)
 	read_cpu_times(&g_si.prev_idle, &g_si.prev_total);
 	g_si.cpu_pct = 0;
 	g_si.ram_pct = 0;
+
+	// Count logical CPU cores and seed per-core prev values
+	int n = read_all_cpu_times(g_si.prev_core_idle, g_si.prev_core_total,
+		MAX_CORES);
+	g_si.ncpu = n > 0 ? n : 1;
+
 	snprintf(g_si.cpu_label, sizeof(g_si.cpu_label), "CPU   0%%");
 	snprintf(g_si.ram_label, sizeof(g_si.ram_label), "RAM   0%%");
 	g_si.initialized = 1;
 
 	if (verbose >= 1)
-		printf("[SYSINFO] widget initialized\n");
+		printf("[SYSINFO] widget initialized (%d core%s)\n", g_si.ncpu,
+			g_si.ncpu > 1 ? "s" : "");
 }
 
 // ---------------------------------------------------------------------------
@@ -225,7 +278,7 @@ sysinfo_draw_tile(uint32_t *data, int width, int height, const Config *cfg,
 // sysinfo_widget_needs_repaint
 // ---------------------------------------------------------------------------
 int
-sysinfo_widget_needs_repaint(int *last_second)
+sysinfo_widget_needs_repaint(int *last_second, int percpu)
 {
 	if (!last_second || !g_si.initialized)
 		return 0;
@@ -238,21 +291,48 @@ sysinfo_widget_needs_repaint(int *last_second)
 		return 0;
 
 	// --- CPU ---
-	long long idle = 0, total = 0;
-	if (read_cpu_times(&idle, &total) == 0) {
-		long long d_idle = idle - g_si.prev_idle;
-		long long d_total = total - g_si.prev_total;
-		if (d_total > 0) {
-			if (d_idle < 0)
-				d_idle = 0;
-			g_si.cpu_pct = (int)(100LL * (d_total - d_idle) / d_total);
-			if (g_si.cpu_pct < 0)
-				g_si.cpu_pct = 0;
-			if (g_si.cpu_pct > 100)
-				g_si.cpu_pct = 100;
+	if (percpu) {
+		// Per-core mode: find the busiest single core.
+		// Reading individual cpuN lines avoids the aggregate×ncpu rounding
+		// error that caused values like 108% on a 12-core machine.
+		long long cur_idles[MAX_CORES], cur_totals[MAX_CORES];
+		int n = read_all_cpu_times(cur_idles, cur_totals, MAX_CORES);
+		int max_pct = 0;
+		for (int i = 0; i < n && i < g_si.ncpu; i++) {
+			long long d_idle = cur_idles[i] - g_si.prev_core_idle[i];
+			long long d_total = cur_totals[i] - g_si.prev_core_total[i];
+			if (d_total > 0) {
+				if (d_idle < 0)
+					d_idle = 0;
+				int pct = (int)(100LL * (d_total - d_idle) / d_total);
+				if (pct > max_pct)
+					max_pct = pct;
+			}
+			g_si.prev_core_idle[i] = cur_idles[i];
+			g_si.prev_core_total[i] = cur_totals[i];
 		}
-		g_si.prev_idle = idle;
-		g_si.prev_total = total;
+		if (max_pct > 100)
+			max_pct = 100;
+		g_si.cpu_pct = max_pct;
+	} else {
+		// System-wide mode: aggregate line gives total across all cores
+		long long idle = 0, total = 0;
+		if (read_cpu_times(&idle, &total) == 0) {
+			long long d_idle = idle - g_si.prev_idle;
+			long long d_total = total - g_si.prev_total;
+			if (d_total > 0) {
+				if (d_idle < 0)
+					d_idle = 0;
+				int pct = (int)(100LL * (d_total - d_idle) / d_total);
+				if (pct < 0)
+					pct = 0;
+				if (pct > 100)
+					pct = 100;
+				g_si.cpu_pct = pct;
+			}
+			g_si.prev_idle = idle;
+			g_si.prev_total = total;
+		}
 	}
 
 	// --- RAM ---
@@ -264,7 +344,8 @@ sysinfo_widget_needs_repaint(int *last_second)
 	snprintf(g_si.ram_label, sizeof(g_si.ram_label), "RAM %3d%%", g_si.ram_pct);
 
 	if (verbose >= 4)
-		printf("[SYSINFO] cpu=%d%% ram=%d%%\n", g_si.cpu_pct, g_si.ram_pct);
+		printf("[SYSINFO] cpu=%d%% ram=%d%% (percpu=%d ncpu=%d)\n",
+			g_si.cpu_pct, g_si.ram_pct, percpu, g_si.ncpu);
 
 	*last_second = cur_second;
 	return 1;
