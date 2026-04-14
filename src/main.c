@@ -1828,8 +1828,8 @@ main(int argc, char *argv[])
 				"  -V, --version    Print version and exit\n"
 				"  -c, --config     Open the graphical configuration window\n"
 				"\nlabar reads its configuration from:\n"
-				"  ~/.config/labar/labar.cfg\n",
-				argv[0]);
+				"  ~/%s/%s\n",
+				argv[0], CONFIG_DIR, CONFIG_NAME);
 			return 0;
 		case 'v':
 			verbose++;

@@ -1,6 +1,9 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#define CONFIG_DIR ".config"
+#define CONFIG_NAME "labar.cfg"
+
 // Global verbose flag for debug output
 extern int verbose;
 

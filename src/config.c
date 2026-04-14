@@ -11,8 +11,6 @@
 #include <unistd.h>
 
 #define APPS_DIR "/usr/share/applications"
-#define CONFIG_DIR ".config"
-#define CONFIG_NAME "labar.cfg"
 
 // ---------------------------------------------------------------------------
 // .desktop file parser
