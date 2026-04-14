@@ -116,7 +116,7 @@ find_default_iface(char *out, int out_len)
 {
 	FILE *fp = fopen("/proc/net/dev", "r");
 	if (!fp) {
-		strncpy(out, "eth0", out_len - 1);
+		snprintf(out, out_len, "eth0");
 		return;
 	}
 
@@ -133,6 +133,7 @@ find_default_iface(char *out, int out_len)
 		if (!colon)
 			continue;
 
+		// Extract and trim interface name
 		char name[IFACE_NAME_LEN] = {0};
 		char *p = line;
 		while (*p == ' ')
@@ -140,7 +141,10 @@ find_default_iface(char *out, int out_len)
 		int len = (int)(colon - p);
 		if (len <= 0 || len >= IFACE_NAME_LEN)
 			continue;
+
 		memcpy(name, p, len);
+		name[len] = '\0';
+		// rtrim spaces
 		while (len > 0 && name[len - 1] == ' ')
 			name[--len] = '\0';
 
@@ -157,11 +161,10 @@ find_default_iface(char *out, int out_len)
 		long long rx = fields[0], tx = fields[8];
 
 		if (first_non_lo[0] == '\0')
-			strncpy(first_non_lo, name, IFACE_NAME_LEN - 1);
+			snprintf(first_non_lo, sizeof(first_non_lo), "%s", name);
 
 		if (rx > 0 || tx > 0) {
-			strncpy(out, name, out_len - 1);
-			out[out_len - 1] = '\0';
+			snprintf(out, out_len, "%s", name);
 			fclose(fp);
 			return;
 		}
@@ -170,10 +173,10 @@ find_default_iface(char *out, int out_len)
 	fclose(fp);
 
 	if (out[0] == '\0' && first_non_lo[0] != '\0')
-		strncpy(out, first_non_lo, out_len - 1);
+		snprintf(out, out_len, "%s", first_non_lo);
 
 	if (out[0] == '\0')
-		strncpy(out, "eth0", out_len - 1);
+		snprintf(out, out_len, "eth0");
 }
 
 /*
