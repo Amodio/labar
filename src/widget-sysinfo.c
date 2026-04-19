@@ -284,7 +284,6 @@ read_max_cpu_temp(void)
 	return max_temp;
 }
 
-
 /*
  * read_top_cpu_proc — find the process name with the highest utime+stime
  * delta since last call by scanning /proc/[pid]/stat.
@@ -477,10 +476,14 @@ sysinfo_widget_init(void)
 	snprintf(g_si.ram_label, sizeof(g_si.ram_label), "RAM   0%%");
 	g_si.temp_celsius = read_max_cpu_temp();
 	if (g_si.temp_celsius >= 0)
-		snprintf(g_si.temp_label, sizeof(g_si.temp_label), "%3d\xc2\xb0""C",
+		snprintf(g_si.temp_label, sizeof(g_si.temp_label),
+			"%3d\xc2\xb0"
+			"C",
 			g_si.temp_celsius);
 	else
-		snprintf(g_si.temp_label, sizeof(g_si.temp_label), " --\xc2\xb0""C");
+		snprintf(g_si.temp_label, sizeof(g_si.temp_label),
+			" --\xc2\xb0"
+			"C");
 	g_si.initialized = 1;
 
 	if (verbose >= 1)
@@ -557,7 +560,8 @@ sysinfo_draw_tile(uint32_t *data, int width, int height, const Config *cfg,
 
 	const char *cpu_str = g_si.cpu_label[0] ? g_si.cpu_label : "CPU  --%";
 	const char *tmp_str = g_si.temp_label[0] ? g_si.temp_label :
-		" --\xc2\xb0""C";
+											   " --\xc2\xb0"
+											   "C";
 	const char *ram_str = g_si.ram_label[0] ? g_si.ram_label : "RAM  --%";
 	const char *cpu_proc = g_si.cpu_proc[0] ? g_si.cpu_proc : "";
 	const char *ram_proc = g_si.ram_proc[0] ? g_si.ram_proc : "";
@@ -602,15 +606,16 @@ sysinfo_draw_tile(uint32_t *data, int width, int height, const Config *cfg,
 
 	// Three rows: CPU (top), TEMP (middle), RAM (bottom).
 	double row = height / 3.0;
-	double cpu_baseline      = row * 1.05;
+	double cpu_baseline = row * 1.05;
 	double cpu_proc_baseline = row * 1.42;
-	double tmp_baseline      = row + row * 0.92;
-	double ram_baseline      = 2.0 * row + row * 0.55;
+	double tmp_baseline = row + row * 0.92;
+	double ram_baseline = 2.0 * row + row * 0.55;
 	double ram_proc_baseline = 2.0 * row + row * 0.88;
 
 	draw_centered_text(cr, width, cpu_str, cpu_baseline, font_sz, cpu_col);
 	if (!cfg || cfg->sysinfo_show_temp)
-		draw_centered_text(cr, width, tmp_str, tmp_baseline, tmp_font_sz, tmp_col);
+		draw_centered_text(cr, width, tmp_str, tmp_baseline, tmp_font_sz,
+			tmp_col);
 	draw_centered_text(cr, width, ram_str, ram_baseline, font_sz, ram_col);
 
 	if (!cfg || cfg->sysinfo_show_proc) {
@@ -706,10 +711,13 @@ sysinfo_widget_needs_repaint(int *last_second, int percpu)
 	g_si.temp_celsius = tc;
 	if (tc >= 0)
 		snprintf(g_si.temp_label, sizeof(g_si.temp_label),
-			"%3d\xc2\xb0""C", tc);
+			"%3d\xc2\xb0"
+			"C",
+			tc);
 	else
 		snprintf(g_si.temp_label, sizeof(g_si.temp_label),
-			" --\xc2\xb0""C");
+			" --\xc2\xb0"
+			"C");
 
 	if (verbose >= 4)
 		printf("[SYSINFO] cpu=%d%% tmp=%dÂ°C ram=%d%% (percpu=%d ncpu=%d)\n",

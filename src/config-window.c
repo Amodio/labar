@@ -725,9 +725,11 @@ write_config(CfgWin *w)
 				"# percpu: true = per-core %% like top, false = system-wide\n"); \
 			fprintf(fp, "percpu=%s\n", c->sysinfo_percpu ? "true" : "false");    \
 			fprintf(fp, "# show-temp: show the CPU temperature line\n");         \
-			fprintf(fp, "show-temp=%s\n", c->sysinfo_show_temp ? "true" : "false"); \
+			fprintf(fp, "show-temp=%s\n",                                        \
+				c->sysinfo_show_temp ? "true" : "false");                        \
 			fprintf(fp, "# show-proc: show process name sub-lines\n");           \
-			fprintf(fp, "show-proc=%s\n", c->sysinfo_show_proc ? "true" : "false"); \
+			fprintf(fp, "show-proc=%s\n",                                        \
+				c->sysinfo_show_proc ? "true" : "false");                        \
 			fprintf(fp, "# cpu-color: color for the CPU usage line\n");          \
 			fprint_color(fp, "cpu-color",                                        \
 				c->sysinfo_cpu_color ? c->sysinfo_cpu_color : 0xFFFFEB3B);       \

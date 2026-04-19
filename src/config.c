@@ -880,11 +880,13 @@ parse_config_file(FILE *fp)
 				if (verbose >= 2)
 					printf("[DBG²]   sysinfo percpu: %s\n", value);
 			} else if (strcmp(key, "show-temp") == 0) {
-				cfg.sysinfo_show_temp = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+				cfg.sysinfo_show_temp =
+					(strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
 				if (verbose >= 2)
 					printf("[DBG²]   sysinfo show-temp: %s\n", value);
 			} else if (strcmp(key, "show-proc") == 0) {
-				cfg.sysinfo_show_proc = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+				cfg.sysinfo_show_proc =
+					(strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
 				if (verbose >= 2)
 					printf("[DBG²]   sysinfo show-proc: %s\n", value);
 			} else if (strcmp(key, "cpu-color") == 0) {

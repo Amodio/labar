@@ -72,10 +72,10 @@ typedef struct {
 	// ---------------------------------------------------------------------------
 	// CPU / RAM usage widget (sysinfo)
 	// ---------------------------------------------------------------------------
-	int show_sysinfo;				// 1 = show widget, 0 = disabled
-	int sysinfo_percpu;				// 1 = per-core style, 0 = system-wide
-	int sysinfo_show_temp;			// 1 = show temperature line (default: 1)
-	int sysinfo_show_proc;			// 1 = show process name sub-lines (default: 1)
+	int show_sysinfo;	   // 1 = show widget, 0 = disabled
+	int sysinfo_percpu;	   // 1 = per-core style, 0 = system-wide
+	int sysinfo_show_temp; // 1 = show temperature line (default: 1)
+	int sysinfo_show_proc; // 1 = show process name sub-lines (default: 1)
 	unsigned int sysinfo_cpu_color; // ARGB color for the CPU line
 	unsigned int sysinfo_tmp_color; // ARGB color for the TMP (temperature) line
 	unsigned int sysinfo_ram_color; // ARGB color for the RAM line
