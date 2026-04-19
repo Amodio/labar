@@ -177,7 +177,7 @@ read_max_cpu_temp(void)
 				continue;
 
 			/* Read driver name */
-			char name_path[128];
+			char name_path[280];
 			snprintf(name_path, sizeof(name_path), "/sys/class/hwmon/%s/name",
 				ent->d_name);
 			FILE *fp = fopen(name_path, "r");
@@ -200,7 +200,7 @@ read_max_cpu_temp(void)
 				continue;
 
 			/* Scan tempN_input files */
-			char hwmon_dir[128];
+			char hwmon_dir[280];
 			snprintf(hwmon_dir, sizeof(hwmon_dir), "/sys/class/hwmon/%s",
 				ent->d_name);
 			DIR *hd = opendir(hwmon_dir);
@@ -215,7 +215,7 @@ read_max_cpu_temp(void)
 				if (!suffix)
 					continue;
 
-				char temp_path[192];
+				char temp_path[560];
 				snprintf(temp_path, sizeof(temp_path), "%s/%s", hwmon_dir,
 					hent->d_name);
 				FILE *tf = fopen(temp_path, "r");
@@ -245,7 +245,7 @@ read_max_cpu_temp(void)
 			if (strncmp(ent->d_name, "thermal_zone", 12) != 0)
 				continue;
 
-			char type_path[128];
+			char type_path[280];
 			snprintf(type_path, sizeof(type_path), "/sys/class/thermal/%s/type",
 				ent->d_name);
 			FILE *fp = fopen(type_path, "r");
@@ -264,7 +264,7 @@ read_max_cpu_temp(void)
 				strcmp(zone_type, "x86_pkg_temp") != 0)
 				continue;
 
-			char temp_path[128];
+			char temp_path[280];
 			snprintf(temp_path, sizeof(temp_path), "/sys/class/thermal/%s/temp",
 				ent->d_name);
 			FILE *tf = fopen(temp_path, "r");
