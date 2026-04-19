@@ -9,14 +9,16 @@
 //
 // Renders a text-only tile using Cairo:
 //
-//   Line 1 (upper half) – CPU usage   e.g. "CPU  42%"
-//   Line 2 (lower half) – RAM usage   e.g. "RAM  61%"
+//   Line 1 (top third)    – CPU usage      e.g. "CPU  42%"
+//   Line 2 (middle third) – max CPU temp   e.g. "Temp 67°C"
+//   Line 3 (bottom third) – RAM usage      e.g. "RAM  61%"
 //
 // CPU is sampled from /proc/stat (idle-time delta between two readings).
 // RAM is read from /proc/meminfo (MemTotal – MemAvailable) / MemTotal.
 //
 // Config section: [widget-sysinfo]
 //   cpu-color   #RRGGBB[AA]   color for the CPU line  (default: #FFEB3B)
+//   tmp-color   #RRGGBB[AA]   color for the TMP line  (default: #FF7043)
 //   ram-color   #RRGGBB[AA]   color for the RAM line  (default: #66BB6A)
 //   size        N (pt)        font size                (default: 14)
 //   bg-color    #RRGGBBAA     tile background          (default: transparent)
@@ -30,6 +32,7 @@
 
 #define WIDGET_SYSINFO_CPU_COLOR 0xFFFFEB3B // yellow
 #define WIDGET_SYSINFO_RAM_COLOR 0xFF66BB6A // green
+#define WIDGET_SYSINFO_TMP_COLOR 0xFFFF7043 // deep orange
 #define WIDGET_SYSINFO_FONT_SIZE 14			// pt
 
 // ---------------------------------------------------------------------------

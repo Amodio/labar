@@ -30,10 +30,12 @@ typedef struct {
 	// Last computed usage percentages
 	int cpu_pct;
 	int ram_pct;
+	int temp_celsius; // max CPU temperature (-1 = unavailable)
 	// Cached label strings (cpu_label needs room for percpu values e.g. "CPU
 	// 1200%")
 	char cpu_label[20];
 	char ram_label[16];
+	char temp_label[16];
 	// Name of the most CPU-intensive and most RAM-intensive process
 	char cpu_proc[32];
 	char ram_proc[32];
@@ -149,6 +151,139 @@ read_ram_pct(void)
 		used = 0;
 	return (int)(100LL * used / total);
 }
+
+/*
+ * read_max_cpu_temp — scan hwmon and thermal_zone sysfs entries for the
+ * highest CPU-related temperature.
+ *
+ * Strategy (in order):
+ *   1. /sys/class/hwmon/hwmonN/name  — if "coretemp" or "k10temp" or "zenpower"
+ *      read all tempN_input files (millidegrees Celsius) and take the max.
+ *   2. /sys/class/thermal/thermal_zoneN/type — if "x86_pkg_temp" or "cpu*"
+ *      read the corresponding "temp" file.
+ *   3. Returns the highest value found, or -1 if nothing is available.
+ */
+static int
+read_max_cpu_temp(void)
+{
+	int max_temp = -1;
+
+	/* --- hwmon path --- */
+	DIR *d = opendir("/sys/class/hwmon");
+	if (d) {
+		struct dirent *ent;
+		while ((ent = readdir(d))) {
+			if (ent->d_name[0] == '.')
+				continue;
+
+			/* Read driver name */
+			char name_path[128];
+			snprintf(name_path, sizeof(name_path), "/sys/class/hwmon/%s/name",
+				ent->d_name);
+			FILE *fp = fopen(name_path, "r");
+			if (!fp)
+				continue;
+			char drv_name[32] = {0};
+			if (!fgets(drv_name, sizeof(drv_name), fp)) {
+				fclose(fp);
+				continue;
+			}
+			fclose(fp);
+			/* Strip trailing newline */
+			drv_name[strcspn(drv_name, "\n")] = '\0';
+
+			/* Only interested in CPU temperature drivers */
+			if (strcmp(drv_name, "coretemp") != 0 &&
+				strcmp(drv_name, "k10temp") != 0 &&
+				strcmp(drv_name, "zenpower") != 0 &&
+				strcmp(drv_name, "acpitz") != 0)
+				continue;
+
+			/* Scan tempN_input files */
+			char hwmon_dir[128];
+			snprintf(hwmon_dir, sizeof(hwmon_dir), "/sys/class/hwmon/%s",
+				ent->d_name);
+			DIR *hd = opendir(hwmon_dir);
+			if (!hd)
+				continue;
+			struct dirent *hent;
+			while ((hent = readdir(hd))) {
+				/* Match "tempN_input" */
+				if (strncmp(hent->d_name, "temp", 4) != 0)
+					continue;
+				const char *suffix = strstr(hent->d_name, "_input");
+				if (!suffix)
+					continue;
+
+				char temp_path[192];
+				snprintf(temp_path, sizeof(temp_path), "%s/%s", hwmon_dir,
+					hent->d_name);
+				FILE *tf = fopen(temp_path, "r");
+				if (!tf)
+					continue;
+				long millideg = 0;
+				if (fscanf(tf, "%ld", &millideg) == 1) {
+					int deg = (int)(millideg / 1000);
+					if (deg > max_temp)
+						max_temp = deg;
+				}
+				fclose(tf);
+			}
+			closedir(hd);
+		}
+		closedir(d);
+	}
+
+	if (max_temp >= 0)
+		return max_temp;
+
+	/* --- thermal_zone fallback --- */
+	d = opendir("/sys/class/thermal");
+	if (d) {
+		struct dirent *ent;
+		while ((ent = readdir(d))) {
+			if (strncmp(ent->d_name, "thermal_zone", 12) != 0)
+				continue;
+
+			char type_path[128];
+			snprintf(type_path, sizeof(type_path), "/sys/class/thermal/%s/type",
+				ent->d_name);
+			FILE *fp = fopen(type_path, "r");
+			if (!fp)
+				continue;
+			char zone_type[64] = {0};
+			if (!fgets(zone_type, sizeof(zone_type), fp)) {
+				fclose(fp);
+				continue;
+			}
+			fclose(fp);
+			zone_type[strcspn(zone_type, "\n")] = '\0';
+
+			/* Accept x86_pkg_temp, cpu, cpu-thermal, etc. */
+			if (strstr(zone_type, "cpu") == NULL &&
+				strcmp(zone_type, "x86_pkg_temp") != 0)
+				continue;
+
+			char temp_path[128];
+			snprintf(temp_path, sizeof(temp_path), "/sys/class/thermal/%s/temp",
+				ent->d_name);
+			FILE *tf = fopen(temp_path, "r");
+			if (!tf)
+				continue;
+			long millideg = 0;
+			if (fscanf(tf, "%ld", &millideg) == 1) {
+				int deg = (int)(millideg / 1000);
+				if (deg > max_temp)
+					max_temp = deg;
+			}
+			fclose(tf);
+		}
+		closedir(d);
+	}
+
+	return max_temp;
+}
+
 
 /*
  * read_top_cpu_proc — find the process name with the highest utime+stime
@@ -340,6 +475,12 @@ sysinfo_widget_init(void)
 
 	snprintf(g_si.cpu_label, sizeof(g_si.cpu_label), "CPU   0%%");
 	snprintf(g_si.ram_label, sizeof(g_si.ram_label), "RAM   0%%");
+	g_si.temp_celsius = read_max_cpu_temp();
+	if (g_si.temp_celsius >= 0)
+		snprintf(g_si.temp_label, sizeof(g_si.temp_label), "%3d\xc2\xb0""C",
+			g_si.temp_celsius);
+	else
+		snprintf(g_si.temp_label, sizeof(g_si.temp_label), " --\xc2\xb0""C");
 	g_si.initialized = 1;
 
 	if (verbose >= 1)
@@ -358,7 +499,9 @@ sysinfo_compute_tile_size(const Config *cfg)
 							 (double)WIDGET_SYSINFO_FONT_SIZE) *
 		buffer_scale;
 
-	// Representative worst-case strings
+	// Representative worst-case strings (tile width is driven by CPU and RAM
+	// labels only; the temperature tag floats inline after the CPU text and
+	// does not widen the tile).
 	const char *sample_cpu = "CPU 100%";
 	const char *sample_ram = "RAM 100%";
 
@@ -404,19 +547,24 @@ sysinfo_draw_tile(uint32_t *data, int width, int height, const Config *cfg,
 	unsigned int ram_col = (cfg && cfg->sysinfo_ram_color) ?
 		cfg->sysinfo_ram_color :
 		WIDGET_SYSINFO_RAM_COLOR;
+	unsigned int tmp_col = (cfg && cfg->sysinfo_tmp_color) ?
+		cfg->sysinfo_tmp_color :
+		WIDGET_SYSINFO_TMP_COLOR;
 	double font_sz = ((cfg && cfg->sysinfo_font_size > 0) ?
 							 (double)cfg->sysinfo_font_size :
 							 (double)WIDGET_SYSINFO_FONT_SIZE) *
 		buffer_scale;
 
 	const char *cpu_str = g_si.cpu_label[0] ? g_si.cpu_label : "CPU  --%";
+	const char *tmp_str = g_si.temp_label[0] ? g_si.temp_label :
+		" --\xc2\xb0""C";
 	const char *ram_str = g_si.ram_label[0] ? g_si.ram_label : "RAM  --%";
 	const char *cpu_proc = g_si.cpu_proc[0] ? g_si.cpu_proc : "";
 	const char *ram_proc = g_si.ram_proc[0] ? g_si.ram_proc : "";
 
 	if (verbose >= 4)
-		printf("[SYSINFO] tile %dx%d  cpu='%s' (%s)  ram='%s' (%s)\n", width,
-			height, cpu_str, cpu_proc, ram_str, ram_proc);
+		printf("[SYSINFO] tile %dx%d  cpu='%s' (%s)  tmp='%s'  ram='%s' (%s)\n",
+			width, height, cpu_str, cpu_proc, tmp_str, ram_str, ram_proc);
 
 	cairo_surface_t *cs =
 		cairo_image_surface_create_for_data((unsigned char *)data,
@@ -437,9 +585,13 @@ sysinfo_draw_tile(uint32_t *data, int width, int height, const Config *cfg,
 	cairo_select_font_face(cr, "monospace", CAIRO_FONT_SLANT_NORMAL,
 		CAIRO_FONT_WEIGHT_BOLD);
 
-	// Auto-scale font size if text is wider than the tile (vertical bar).
+	// Auto-scale font size to fit the tile (relevant for vertical bars).
 	font_sz = fit_font_size(cr, cpu_str, width, font_sz);
 	font_sz = fit_font_size(cr, ram_str, width, font_sz);
+
+	// Temperature is rendered in the middle third at a reduced font size so
+	// it occupies no more horizontal space than the CPU/RAM rows.
+	double tmp_font_sz = font_sz * 0.75;
 
 	// Process name is rendered at 65% of the main font size, dimmed
 	double proc_font_sz = font_sz * 0.65;
@@ -448,27 +600,29 @@ sysinfo_draw_tile(uint32_t *data, int width, int height, const Config *cfg,
 	if (ram_proc[0])
 		proc_font_sz = fit_font_size(cr, ram_proc, width, proc_font_sz);
 
-	int mid = height / 2;
-
-	// Each half is split: percentage at ~60%, process name at ~88%
-	double cpu_baseline = mid * 0.60;
-	double cpu_proc_baseline = mid * 0.88;
-	double ram_baseline = mid + (height - mid) * 0.60;
-	double ram_proc_baseline = mid + (height - mid) * 0.88;
+	// Three rows: CPU (top), TEMP (middle), RAM (bottom).
+	double row = height / 3.0;
+	double cpu_baseline      = row * 1.05;
+	double cpu_proc_baseline = row * 1.42;
+	double tmp_baseline      = row + row * 0.92;
+	double ram_baseline      = 2.0 * row + row * 0.55;
+	double ram_proc_baseline = 2.0 * row + row * 0.88;
 
 	draw_centered_text(cr, width, cpu_str, cpu_baseline, font_sz, cpu_col);
+	if (!cfg || cfg->sysinfo_show_temp)
+		draw_centered_text(cr, width, tmp_str, tmp_baseline, tmp_font_sz, tmp_col);
 	draw_centered_text(cr, width, ram_str, ram_baseline, font_sz, ram_col);
 
-	// Process names: same hue as their line but at 60% alpha
-	unsigned int cpu_proc_col = (cpu_col & 0x00FFFFFF) | 0x99000000;
-	unsigned int ram_proc_col = (ram_col & 0x00FFFFFF) | 0x99000000;
-
-	cairo_select_font_face(cr, "monospace", CAIRO_FONT_SLANT_NORMAL,
-		CAIRO_FONT_WEIGHT_NORMAL);
-	draw_centered_text(cr, width, cpu_proc, cpu_proc_baseline, proc_font_sz,
-		cpu_proc_col);
-	draw_centered_text(cr, width, ram_proc, ram_proc_baseline, proc_font_sz,
-		ram_proc_col);
+	if (!cfg || cfg->sysinfo_show_proc) {
+		unsigned int cpu_proc_col = (cpu_col & 0x00FFFFFF) | 0x99000000;
+		unsigned int ram_proc_col = (ram_col & 0x00FFFFFF) | 0x99000000;
+		cairo_select_font_face(cr, "monospace", CAIRO_FONT_SLANT_NORMAL,
+			CAIRO_FONT_WEIGHT_NORMAL);
+		draw_centered_text(cr, width, cpu_proc, cpu_proc_baseline, proc_font_sz,
+			cpu_proc_col);
+		draw_centered_text(cr, width, ram_proc, ram_proc_baseline, proc_font_sz,
+			ram_proc_col);
+	}
 
 	cairo_destroy(cr);
 	cairo_surface_destroy(cs);
@@ -547,9 +701,19 @@ sysinfo_widget_needs_repaint(int *last_second, int percpu)
 	snprintf(g_si.cpu_label, sizeof(g_si.cpu_label), "CPU %3d%%", g_si.cpu_pct);
 	snprintf(g_si.ram_label, sizeof(g_si.ram_label), "RAM %3d%%", g_si.ram_pct);
 
+	// --- Temperature ---
+	int tc = read_max_cpu_temp();
+	g_si.temp_celsius = tc;
+	if (tc >= 0)
+		snprintf(g_si.temp_label, sizeof(g_si.temp_label),
+			"%3d\xc2\xb0""C", tc);
+	else
+		snprintf(g_si.temp_label, sizeof(g_si.temp_label),
+			" --\xc2\xb0""C");
+
 	if (verbose >= 4)
-		printf("[SYSINFO] cpu=%d%% ram=%d%% (percpu=%d ncpu=%d)\n",
-			g_si.cpu_pct, g_si.ram_pct, percpu, g_si.ncpu);
+		printf("[SYSINFO] cpu=%d%% tmp=%dÂ°C ram=%d%% (percpu=%d ncpu=%d)\n",
+			g_si.cpu_pct, g_si.temp_celsius, g_si.ram_pct, percpu, g_si.ncpu);
 
 	*last_second = cur_second;
 	return 1;

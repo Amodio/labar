@@ -331,10 +331,10 @@ net_draw_tile(uint32_t *data, int width, int height, const Config *cfg,
 	font_sz = fit_font_size(cr, rx_str, width, font_sz);
 	font_sz = fit_font_size(cr, tx_str, width, font_sz);
 
-	// Upper band → RX, lower band → TX
-	int mid = height / 2;
-	double rx_baseline = mid * 0.82;
-	double tx_baseline = mid + (height - mid) * 0.82;
+	// Upper band → RX, lower band → TX, aligned with widget-sysinfo lines
+	double row = height / 3.0;
+	double rx_baseline = row * 1.05;
+	double tx_baseline = 2.0 * row + row * 0.55;
 
 	draw_centered_text(cr, width, rx_str, rx_baseline, font_sz, rx_col);
 	draw_centered_text(cr, width, tx_str, tx_baseline, font_sz, tx_col);

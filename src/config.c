@@ -521,7 +521,10 @@ parse_config_file(FILE *fp)
 	cfg.show_date = 0;				   // Date widget off by default
 	cfg.show_sysinfo = 1;			   // Sysinfo widget on by default
 	cfg.sysinfo_percpu = 1;			   // top-style (unnormalized) by default
+	cfg.sysinfo_show_temp = 1;		   // show temperature line by default
+	cfg.sysinfo_show_proc = 1;		   // show process name sub-lines by default
 	cfg.sysinfo_cpu_color = 0;		   // Falls back to WIDGET_SYSINFO_CPU_COLOR
+	cfg.sysinfo_tmp_color = 0;		   // Falls back to WIDGET_SYSINFO_TMP_COLOR
 	cfg.sysinfo_ram_color = 0;		   // Falls back to WIDGET_SYSINFO_RAM_COLOR
 	cfg.sysinfo_font_size = 0;		   // Falls back to WIDGET_SYSINFO_FONT_SIZE
 	cfg.sysinfo_bg_color = 0;		   // Transparent by default
@@ -876,6 +879,14 @@ parse_config_file(FILE *fp)
 				cfg.sysinfo_percpu = (strcmp(value, "true") == 0);
 				if (verbose >= 2)
 					printf("[DBG²]   sysinfo percpu: %s\n", value);
+			} else if (strcmp(key, "show-temp") == 0) {
+				cfg.sysinfo_show_temp = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+				if (verbose >= 2)
+					printf("[DBG²]   sysinfo show-temp: %s\n", value);
+			} else if (strcmp(key, "show-proc") == 0) {
+				cfg.sysinfo_show_proc = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+				if (verbose >= 2)
+					printf("[DBG²]   sysinfo show-proc: %s\n", value);
 			} else if (strcmp(key, "cpu-color") == 0) {
 				const char *hex = value;
 				if (hex[0] == '#')
@@ -889,6 +900,19 @@ parse_config_file(FILE *fp)
 				if (verbose >= 2)
 					printf("[DBG²]   widget-sysinfo cpu-color: 0x%08X\n",
 						cfg.sysinfo_cpu_color);
+			} else if (strcmp(key, "tmp-color") == 0) {
+				const char *hex = value;
+				if (hex[0] == '#')
+					hex++;
+				unsigned long parsed = strtoul(hex, NULL, 16);
+				if (strlen(hex) <= 6)
+					cfg.sysinfo_tmp_color = 0xFF000000 | (unsigned int)parsed;
+				else
+					cfg.sysinfo_tmp_color =
+						((parsed & 0xFF) << 24) | ((parsed >> 8) & 0xFFFFFF);
+				if (verbose >= 2)
+					printf("[DBG²]   widget-sysinfo tmp-color: 0x%08X\n",
+						cfg.sysinfo_tmp_color);
 			} else if (strcmp(key, "ram-color") == 0) {
 				const char *hex = value;
 				if (hex[0] == '#')
@@ -1330,8 +1354,14 @@ write_default_config(DesktopEntry **entries, int count)
 	fprintf(fp, "\n[widget-sysinfo]\n");
 	fprintf(fp, "# percpu: true = per-core %% like top, false = system-wide\n");
 	fprintf(fp, "percpu=true\n");
+	fprintf(fp, "# show-temp: show the CPU temperature line\n");
+	fprintf(fp, "show-temp=true\n");
+	fprintf(fp, "# show-proc: show process name sub-lines\n");
+	fprintf(fp, "show-proc=true\n");
 	fprintf(fp, "# cpu-color: color for the CPU usage line\n");
 	fprintf(fp, "cpu-color=#FFEB3B\n");
+	fprintf(fp, "# tmp-color: color for the CPU temperature line\n");
+	fprintf(fp, "tmp-color=#FF7043\n");
 	fprintf(fp, "# ram-color: color for the RAM usage line\n");
 	fprintf(fp, "ram-color=#66BB6A\n");
 	fprintf(fp, "# size: font size in pt\n");

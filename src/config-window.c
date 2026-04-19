@@ -330,11 +330,14 @@ struct _CfgWin {
 	GtkSpinButton *net_size_spin;
 	GtkColorDialogButton *net_bg_color_btn;
 	GtkColorDialogButton *sysinfo_cpu_color_btn;
+	GtkColorDialogButton *sysinfo_tmp_color_btn;
 	GtkColorDialogButton *sysinfo_ram_color_btn;
 	GtkSpinButton *sysinfo_size_spin;
 	GtkColorDialogButton *sysinfo_bg_color_btn;
 	GtkEntry *sysinfo_exec_entry;
 	GtkCheckButton *sysinfo_percpu_check;
+	GtkCheckButton *sysinfo_show_temp_check;
+	GtkCheckButton *sysinfo_show_proc_check;
 
 	/* Apps */
 	GtkBox *apps_box;
@@ -606,6 +609,8 @@ write_config(CfgWin *w)
 	/* Sysinfo widget fields */
 	if (w->sysinfo_cpu_color_btn)
 		c->sysinfo_cpu_color = read_color_btn(w->sysinfo_cpu_color_btn);
+	if (w->sysinfo_tmp_color_btn)
+		c->sysinfo_tmp_color = read_color_btn(w->sysinfo_tmp_color_btn);
 	if (w->sysinfo_ram_color_btn)
 		c->sysinfo_ram_color = read_color_btn(w->sysinfo_ram_color_btn);
 	if (w->sysinfo_size_spin)
@@ -622,6 +627,12 @@ write_config(CfgWin *w)
 	if (w->sysinfo_percpu_check)
 		c->sysinfo_percpu =
 			gtk_check_button_get_active(w->sysinfo_percpu_check);
+	if (w->sysinfo_show_temp_check)
+		c->sysinfo_show_temp =
+			gtk_check_button_get_active(w->sysinfo_show_temp_check);
+	if (w->sysinfo_show_proc_check)
+		c->sysinfo_show_proc =
+			gtk_check_button_get_active(w->sysinfo_show_proc_check);
 
 	char *ddf =
 		strdup(gtk_editable_get_text(GTK_EDITABLE(w->date_date_format_entry)));
@@ -713,9 +724,16 @@ write_config(CfgWin *w)
 			fprintf(fp,                                                          \
 				"# percpu: true = per-core %% like top, false = system-wide\n"); \
 			fprintf(fp, "percpu=%s\n", c->sysinfo_percpu ? "true" : "false");    \
+			fprintf(fp, "# show-temp: show the CPU temperature line\n");         \
+			fprintf(fp, "show-temp=%s\n", c->sysinfo_show_temp ? "true" : "false"); \
+			fprintf(fp, "# show-proc: show process name sub-lines\n");           \
+			fprintf(fp, "show-proc=%s\n", c->sysinfo_show_proc ? "true" : "false"); \
 			fprintf(fp, "# cpu-color: color for the CPU usage line\n");          \
 			fprint_color(fp, "cpu-color",                                        \
 				c->sysinfo_cpu_color ? c->sysinfo_cpu_color : 0xFFFFEB3B);       \
+			fprintf(fp, "# tmp-color: color for the CPU temperature line\n");    \
+			fprint_color(fp, "tmp-color",                                        \
+				c->sysinfo_tmp_color ? c->sysinfo_tmp_color : 0xFFFF7043);       \
 			fprintf(fp, "# ram-color: color for the RAM usage line\n");          \
 			fprint_color(fp, "ram-color",                                        \
 				c->sysinfo_ram_color ? c->sysinfo_ram_color : 0xFF66BB6A);       \
@@ -1407,6 +1425,13 @@ make_widget_row(CfgWin *w, int pos)
 		store_signal_pair(frame, G_OBJECT(w->sysinfo_cpu_color_btn),
 			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_cpu_color_btn), w));
 
+		w->sysinfo_tmp_color_btn = make_color_btn(w->color_dialog,
+			w->cfg.sysinfo_tmp_color ? w->cfg.sysinfo_tmp_color : 0xFFFF7043);
+		grid_row(GTK_GRID(sg), r++,
+			"Temp color:", GTK_WIDGET(w->sysinfo_tmp_color_btn));
+		store_signal_pair(frame, G_OBJECT(w->sysinfo_tmp_color_btn),
+			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_tmp_color_btn), w));
+
 		w->sysinfo_ram_color_btn = make_color_btn(w->color_dialog,
 			w->cfg.sysinfo_ram_color ? w->cfg.sysinfo_ram_color : 0xFF66BB6A);
 		grid_row(GTK_GRID(sg), r++,
@@ -1447,6 +1472,24 @@ make_widget_row(CfgWin *w, int pos)
 			"CPU mode:", GTK_WIDGET(w->sysinfo_percpu_check));
 		store_signal_pair(frame, G_OBJECT(w->sysinfo_percpu_check),
 			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_percpu_check), w));
+
+		w->sysinfo_show_temp_check = GTK_CHECK_BUTTON(
+			gtk_check_button_new_with_label("Show temperature line"));
+		gtk_check_button_set_active(w->sysinfo_show_temp_check,
+			w->cfg.sysinfo_show_temp);
+		grid_row(GTK_GRID(sg), r++,
+			"Temperature:", GTK_WIDGET(w->sysinfo_show_temp_check));
+		store_signal_pair(frame, G_OBJECT(w->sysinfo_show_temp_check),
+			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_show_temp_check), w));
+
+		w->sysinfo_show_proc_check = GTK_CHECK_BUTTON(
+			gtk_check_button_new_with_label("Show process names"));
+		gtk_check_button_set_active(w->sysinfo_show_proc_check,
+			w->cfg.sysinfo_show_proc);
+		grid_row(GTK_GRID(sg), r++,
+			"Process names:", GTK_WIDGET(w->sysinfo_show_proc_check));
+		store_signal_pair(frame, G_OBJECT(w->sysinfo_show_proc_check),
+			connect_mark_unsaved(GTK_WIDGET(w->sysinfo_show_proc_check), w));
 		break;
 	}
 	case 1: { /* Net */
