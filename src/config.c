@@ -199,7 +199,8 @@ make_icon_path(const char *dir, const char *size, const char *name,
 	const char *ext)
 {
 	char *p = NULL;
-	asprintf(&p, "%s/%s/apps/%s.%s", dir, size, name, ext);
+	if (asprintf(&p, "%s/%s/apps/%s.%s", dir, size, name, ext) < 0)
+		return NULL;
 	return p;
 }
 

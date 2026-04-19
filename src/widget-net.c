@@ -124,9 +124,13 @@ find_default_iface(char *out, int out_len)
 	char first_non_lo[IFACE_NAME_LEN] = {0};
 	out[0] = '\0';
 
-	// Skip the two header lines
-	fgets(line, sizeof(line), fp);
-	fgets(line, sizeof(line), fp);
+	/* Skip the two header lines; bail out if the file is truncated */
+	if (!fgets(line, sizeof(line), fp) || !fgets(line, sizeof(line), fp)) {
+		fclose(fp);
+		if (out[0] == '\0')
+			snprintf(out, out_len, "eth0");
+		return;
+	}
 
 	while (fgets(line, sizeof(line), fp)) {
 		char *colon = strchr(line, ':');

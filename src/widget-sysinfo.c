@@ -292,7 +292,10 @@ read_top_ram_proc(char *out_name, int out_len)
 		if (!fp)
 			continue;
 		long vmsize = 0, rss = 0;
-		fscanf(fp, "%ld %ld", &vmsize, &rss);
+		if (fscanf(fp, "%ld %ld", &vmsize, &rss) != 2) {
+			fclose(fp);
+			continue;
+		}
 		fclose(fp);
 
 		if (rss <= best_rss)
