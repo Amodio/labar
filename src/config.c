@@ -1270,13 +1270,23 @@ write_default_config(DesktopEntry **entries, int count)
 
 	// List of default applications to include
 	const char *default_apps[] = {
-		"keepassxc",
-		"thunderbird",
+		// misc: pw manager + email client
+		"KeePassXC",
+		"Thunderbird",
+		// web browsers
+		"Firefox",
 		"google-chrome",
-		"chromium",
-		"firefox",
-		"foot",
-		"xterm",
+		"Chromium",
+		// file managers
+		"Dolphin",
+		"File Manager PCManFM",
+		"Thunar File Manager",
+		// terminals
+		"Alacritty",
+		"kitty",
+		"Konsole",
+		"Foot",
+		"XTerm",
 	};
 	int default_count = sizeof(default_apps) / sizeof(default_apps[0]);
 
