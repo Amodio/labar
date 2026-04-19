@@ -1406,7 +1406,7 @@ write_default_config(DesktopEntry **entries, int count)
 		if (!app)
 			continue;
 
-		char *icon_path = find_best_icon(default_apps[i]);
+		char *icon_path = find_best_icon(app->icon);
 		if (!icon_path)
 			continue;
 
