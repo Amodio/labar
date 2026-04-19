@@ -2140,14 +2140,14 @@ on_activate(GApplication *gapp, gpointer data)
 	gtk_box_append(GTK_BOX(bottom), add_btn);
 	g_signal_connect(add_btn, "clicked", G_CALLBACK(on_add_app_clicked), w);
 
-	GtkWidget *close_btn = gtk_button_new_with_label("✕  Close");
-	gtk_box_append(GTK_BOX(bottom), close_btn);
-	g_signal_connect(close_btn, "clicked", G_CALLBACK(on_close_clicked), w);
-
 	GtkWidget *save_btn = gtk_button_new_with_label("💾  Save");
 	gtk_widget_add_css_class(save_btn, "suggested-action");
 	gtk_box_append(GTK_BOX(bottom), save_btn);
 	g_signal_connect(save_btn, "clicked", G_CALLBACK(on_save_clicked), w);
+
+	GtkWidget *close_btn = gtk_button_new_with_label("✕  Close");
+	gtk_box_append(GTK_BOX(bottom), close_btn);
+	g_signal_connect(close_btn, "clicked", G_CALLBACK(on_close_clicked), w);
 
 	gtk_window_present(w->window);
 }
