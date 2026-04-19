@@ -164,6 +164,11 @@ in your `$PATH`, or set:
 ASAN_SYMBOLIZER_PATH=/usr/lib/llvm22/bin/llvm-symbolizer
 ```
 
+Finally, if you want to debug Wayland, run the program like that:
+```bash
+WAYLAND_DEBUG=1 labar
+```
+
 ## Usage
 
 ```bash
