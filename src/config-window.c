@@ -209,19 +209,49 @@ local_find_all_icons(const char *icon_name)
 				 */
 				int sz_val = -1;
 				sscanf(szd->d_name, "%d", &sz_val); /* e.g. "48x48" → 48 */
-				const char *exts[] = {"svg", "png", NULL};
-				for (int e = 0; exts[e]; e++) {
-					char *spath = NULL;
-					if (asprintf(&spath, "%s/%s/apps/%s.%s", tpath, szd->d_name,
-							icon_name, exts[e]) < 0)
+
+				/* Scan subdirs that contain app icons: apps/ and mimetypes/ */
+				const char *icon_subdirs[] = {"apps", "mimetypes", NULL};
+				for (int s = 0; icon_subdirs[s]; s++) {
+					char *subdir_path = NULL;
+					if (asprintf(&subdir_path, "%s/%s/%s", tpath, szd->d_name,
+							icon_subdirs[s]) < 0)
 						continue;
-					if (access(spath, F_OK) != 0) {
-						free(spath);
+					DIR *idir = opendir(subdir_path);
+					if (!idir) {
+						free(subdir_path);
 						continue;
 					}
-					int sv = (e == 0) ? (sz_val < 0 ? 9999 : sz_val + 5000) :
-										(sz_val < 0 ? 0 : sz_val);
-					APPEND_ICON(spath, sv);
+					size_t prefix_len = strlen(icon_name);
+					struct dirent *ifile;
+					while ((ifile = readdir(idir))) {
+						if (ifile->d_name[0] == '.')
+							continue;
+						/* Match exact name or name variants starting with
+						 * "<icon_name>" followed by '-' or '.' */
+						if (strncmp(ifile->d_name, icon_name, prefix_len) != 0)
+							continue;
+						char next = ifile->d_name[prefix_len];
+						if (next != '\0' && next != '-' && next != '.')
+							continue;
+						/* Accept only .svg and .png */
+						const char *dot = strrchr(ifile->d_name, '.');
+						if (!dot)
+							continue;
+						int is_svg = (strcmp(dot, ".svg") == 0);
+						int is_png = (strcmp(dot, ".png") == 0);
+						if (!is_svg && !is_png)
+							continue;
+						char *spath = NULL;
+						if (asprintf(&spath, "%s/%s", subdir_path,
+								ifile->d_name) < 0)
+							continue;
+						int sv = is_svg ? (sz_val < 0 ? 9999 : sz_val + 5000) :
+										  (sz_val < 0 ? 0 : sz_val);
+						APPEND_ICON(spath, sv);
+					}
+					closedir(idir);
+					free(subdir_path);
 				}
 			}
 			closedir(td);
