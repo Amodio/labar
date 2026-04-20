@@ -37,7 +37,7 @@ static void on_icon_path_btn_clicked(GtkButton *btn, gpointer user_data);
  *   (b) write the resolved absolute path into labar.cfg.
  * ======================================================================= */
 
-/* Walk /usr/share/icons looking for <name>.png or <name>.svg.
+/* Walk XDG data dirs' icons subdirs looking for <n>.png or <n>.svg.
  * Returns a heap-allocated absolute path (caller frees), or NULL. */
 static char *
 local_find_best_icon(const char *icon_name)
@@ -48,72 +48,92 @@ local_find_best_icon(const char *icon_name)
 	if (icon_name[0] == '/')
 		return strdup(icon_name);
 
-	/* Search /usr/share/icons (2 levels: theme / size-dir / apps/) */
-	const char *base = ICONS_DIR;
-	DIR *bd = opendir(base);
-	if (!bd)
-		goto pixmaps;
-
 	char *best = NULL;
 	int best_size = -1;
 
-	struct dirent *theme;
-	while ((theme = readdir(bd))) {
-		if (theme->d_name[0] == '.')
+	char **data_dirs = xdg_data_dirs();
+	if (!data_dirs)
+		return NULL;
+
+	for (int d = 0; data_dirs[d]; d++) {
+		/* Search <datadir>/icons (2 levels: theme / size-dir / apps/) */
+		char *icons_base = NULL;
+		if (asprintf(&icons_base, "%s/" ICONS_SUBDIR, data_dirs[d]) < 0)
 			continue;
-		char *tpath = NULL;
-		if (asprintf(&tpath, "%s/%s", base, theme->d_name) < 0)
-			continue;
-		DIR *td = opendir(tpath);
-		if (!td) {
-			free(tpath);
+
+		DIR *bd = opendir(icons_base);
+		if (!bd) {
+			/* Fallback: <datadir>/pixmaps/<n>.{png,svg} */
+			const char *exts2[] = {"svg", "png", NULL};
+			for (int e = 0; exts2[e]; e++) {
+				char *p = NULL;
+				if (asprintf(&p, "%s/" PIXMAPS_SUBDIR "/%s.%s", data_dirs[d],
+						icon_name, exts2[e]) < 0)
+					continue;
+				if (access(p, F_OK) == 0) {
+					int sv = (e == 0) ? 9999 : 0;
+					if (sv > best_size) {
+						free(best);
+						best = p;
+						best_size = sv;
+					} else {
+						free(p);
+					}
+				} else {
+					free(p);
+				}
+			}
+			free(icons_base);
 			continue;
 		}
-		struct dirent *sz;
-		while ((sz = readdir(td))) {
-			if (sz->d_name[0] == '.')
+
+		struct dirent *theme;
+		while ((theme = readdir(bd))) {
+			if (theme->d_name[0] == '.')
 				continue;
-			/* Try apps/ subdir with both svg and png */
-			const char *exts[] = {"svg", "png", NULL};
-			for (int e = 0; exts[e]; e++) {
-				char *spath = NULL;
-				if (asprintf(&spath, "%s/%s/apps/%s.%s", tpath, sz->d_name,
-						icon_name, exts[e]) < 0)
+			char *tpath = NULL;
+			if (asprintf(&tpath, "%s/%s", icons_base, theme->d_name) < 0)
+				continue;
+			DIR *td = opendir(tpath);
+			if (!td) {
+				free(tpath);
+				continue;
+			}
+			struct dirent *sz;
+			while ((sz = readdir(td))) {
+				if (sz->d_name[0] == '.')
 					continue;
-				if (access(spath, F_OK) == 0) {
-					int sz_val = (e == 0) ? 9999 : 0;
-					sscanf(sz->d_name, "%dx%d", &sz_val, &sz_val);
-					if (sz_val > best_size) {
-						free(best);
-						best = spath;
-						best_size = sz_val;
+				/* Try apps/ subdir with both svg and png */
+				const char *exts[] = {"svg", "png", NULL};
+				for (int e = 0; exts[e]; e++) {
+					char *spath = NULL;
+					if (asprintf(&spath, "%s/%s/apps/%s.%s", tpath, sz->d_name,
+							icon_name, exts[e]) < 0)
+						continue;
+					if (access(spath, F_OK) == 0) {
+						int sz_val = (e == 0) ? 9999 : 0;
+						sscanf(sz->d_name, "%dx%d", &sz_val, &sz_val);
+						if (sz_val > best_size) {
+							free(best);
+							best = spath;
+							best_size = sz_val;
+						} else {
+							free(spath);
+						}
 					} else {
 						free(spath);
 					}
-				} else {
-					free(spath);
 				}
 			}
+			closedir(td);
+			free(tpath);
 		}
-		closedir(td);
-		free(tpath);
+		closedir(bd);
+		free(icons_base);
 	}
-	closedir(bd);
-	if (best)
-		return best;
 
-pixmaps:;
-	/* Fallback: /usr/share/pixmaps/<name>.png|svg */
-	const char *exts2[] = {"png", "svg", NULL};
-	for (int e = 0; exts2[e]; e++) {
-		char *p = NULL;
-		if (asprintf(&p, "%s/%s.%s", PIXMAPS_DIR, icon_name, exts2[e]) < 0)
-			continue;
-		if (access(p, F_OK) == 0)
-			return p;
-		free(p);
-	}
-	return NULL;
+	free_xdg_data_dirs(data_dirs);
+	return best;
 }
 
 /* Collect ALL icon paths for <icon_name> across every theme/size directory.
@@ -186,96 +206,110 @@ local_find_all_icons(const char *icon_name)
 		}                                                                      \
 	} while (0)
 
-	const char *base_dir = ICONS_DIR;
-	DIR *bd = opendir(base_dir);
-	if (bd) {
-		struct dirent *theme;
-		while ((theme = readdir(bd))) {
-			if (theme->d_name[0] == '.')
+	char **data_dirs = xdg_data_dirs();
+	if (data_dirs) {
+		for (int d = 0; data_dirs[d]; d++) {
+			/* Search <datadir>/icons */
+			char *icons_base = NULL;
+			if (asprintf(&icons_base, "%s/" ICONS_SUBDIR, data_dirs[d]) < 0)
 				continue;
-			char *tpath = NULL;
-			if (asprintf(&tpath, "%s/%s", base_dir, theme->d_name) < 0)
-				continue;
-			DIR *td = opendir(tpath);
-			if (!td) {
-				free(tpath);
-				continue;
-			}
-			struct dirent *szd;
-			while ((szd = readdir(td))) {
-				if (szd->d_name[0] == '.')
-					continue;
-				/* Parse size; "scalable" / "symbolic" → treat as SVG-priority
-				 */
-				int sz_val = -1;
-				sscanf(szd->d_name, "%d", &sz_val); /* e.g. "48x48" → 48 */
+			DIR *bd = opendir(icons_base);
+			if (bd) {
+				struct dirent *theme;
+				while ((theme = readdir(bd))) {
+					if (theme->d_name[0] == '.')
+						continue;
+					char *tpath = NULL;
+					if (asprintf(&tpath, "%s/%s", icons_base, theme->d_name) <
+						0)
+						continue;
+					DIR *td = opendir(tpath);
+					if (!td) {
+						free(tpath);
+						continue;
+					}
+					struct dirent *szd;
+					while ((szd = readdir(td))) {
+						if (szd->d_name[0] == '.')
+							continue;
+						/* Parse size; "scalable"/"symbolic" → SVG-priority */
+						int sz_val = -1;
+						sscanf(szd->d_name, "%d", &sz_val); /* "48x48" → 48 */
 
-				/* Scan subdirs that contain app icons: apps/ and mimetypes/ */
-				const char *icon_subdirs[] = {"apps", "mimetypes", NULL};
-				for (int s = 0; icon_subdirs[s]; s++) {
-					char *subdir_path = NULL;
-					if (asprintf(&subdir_path, "%s/%s/%s", tpath, szd->d_name,
-							icon_subdirs[s]) < 0)
-						continue;
-					DIR *idir = opendir(subdir_path);
-					if (!idir) {
-						free(subdir_path);
-						continue;
+						/* Scan subdirs: apps/ and mimetypes/ */
+						const char *icon_subdirs[] = {
+							"apps", "mimetypes", NULL};
+						for (int s = 0; icon_subdirs[s]; s++) {
+							char *subdir_path = NULL;
+							if (asprintf(&subdir_path, "%s/%s/%s", tpath,
+									szd->d_name, icon_subdirs[s]) < 0)
+								continue;
+							DIR *idir = opendir(subdir_path);
+							if (!idir) {
+								free(subdir_path);
+								continue;
+							}
+							size_t prefix_len = strlen(icon_name);
+							struct dirent *ifile;
+							while ((ifile = readdir(idir))) {
+								if (ifile->d_name[0] == '.')
+									continue;
+								/* Match exact name or variants: "<n>-…" or
+								 * "<n>.…" */
+								if (strncmp(ifile->d_name, icon_name,
+										prefix_len) != 0)
+									continue;
+								char next = ifile->d_name[prefix_len];
+								if (next != '\0' && next != '-' && next != '.')
+									continue;
+								/* Accept only .svg and .png */
+								const char *dot = strrchr(ifile->d_name, '.');
+								if (!dot)
+									continue;
+								int is_svg = (strcmp(dot, ".svg") == 0);
+								int is_png = (strcmp(dot, ".png") == 0);
+								if (!is_svg && !is_png)
+									continue;
+								char *spath = NULL;
+								if (asprintf(&spath, "%s/%s", subdir_path,
+										ifile->d_name) < 0)
+									continue;
+								int sv = is_svg ?
+									(sz_val < 0 ? 9999 : sz_val + 5000) :
+									(sz_val < 0 ? 0 : sz_val);
+								APPEND_ICON(spath, sv);
+							}
+							closedir(idir);
+							free(subdir_path);
+						}
 					}
-					size_t prefix_len = strlen(icon_name);
-					struct dirent *ifile;
-					while ((ifile = readdir(idir))) {
-						if (ifile->d_name[0] == '.')
-							continue;
-						/* Match exact name or name variants starting with
-						 * "<icon_name>" followed by '-' or '.' */
-						if (strncmp(ifile->d_name, icon_name, prefix_len) != 0)
-							continue;
-						char next = ifile->d_name[prefix_len];
-						if (next != '\0' && next != '-' && next != '.')
-							continue;
-						/* Accept only .svg and .png */
-						const char *dot = strrchr(ifile->d_name, '.');
-						if (!dot)
-							continue;
-						int is_svg = (strcmp(dot, ".svg") == 0);
-						int is_png = (strcmp(dot, ".png") == 0);
-						if (!is_svg && !is_png)
-							continue;
-						char *spath = NULL;
-						if (asprintf(&spath, "%s/%s", subdir_path,
-								ifile->d_name) < 0)
-							continue;
-						int sv = is_svg ? (sz_val < 0 ? 9999 : sz_val + 5000) :
-										  (sz_val < 0 ? 0 : sz_val);
-						APPEND_ICON(spath, sv);
+					closedir(td);
+					free(tpath);
+				}
+				closedir(bd);
+			}
+			free(icons_base);
+
+			/* Pixmaps fallback for this data dir */
+			{
+				const char *exts2[] = {"png", "svg", NULL};
+				for (int e = 0; exts2[e]; e++) {
+					char *p = NULL;
+					if (asprintf(&p, "%s/" PIXMAPS_SUBDIR "/%s.%s",
+							data_dirs[d], icon_name, exts2[e]) < 0)
+						continue;
+					if (access(p, F_OK) == 0) {
+						int sv = (e == 1) ? 9999 : 0;
+						APPEND_ICON(p, sv);
+					} else {
+						free(p);
 					}
-					closedir(idir);
-					free(subdir_path);
 				}
 			}
-			closedir(td);
-			free(tpath);
 		}
-		closedir(bd);
+		free_xdg_data_dirs(data_dirs);
 	}
 done_scan:;
-
-	/* Pixmaps fallback */
-	{
-		const char *exts2[] = {"png", "svg", NULL};
-		for (int e = 0; exts2[e]; e++) {
-			char *p = NULL;
-			if (asprintf(&p, "%s/%s.%s", PIXMAPS_DIR, icon_name, exts2[e]) < 0)
-				continue;
-			if (access(p, F_OK) == 0) {
-				int sv = (e == 1) ? 9999 : 0;
-				APPEND_ICON(p, sv);
-			} else {
-				free(p);
-			}
-		}
-	}
 
 	/* Include the original absolute path (if any) — it may not be in the
 	 * theme tree (e.g. a custom path the user typed in) */

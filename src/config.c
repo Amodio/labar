@@ -11,6 +11,61 @@
 #include <unistd.h>
 
 // ---------------------------------------------------------------------------
+// XDG data directory helpers
+// ---------------------------------------------------------------------------
+
+// Return a NULL-terminated array of XDG data dirs.
+// Source: $XDG_DATA_DIRS (colon-separated), or XDG_DATA_DIRS_DEFAULT.
+// Caller frees with free_xdg_data_dirs().
+char **
+xdg_data_dirs(void)
+{
+	const char *env = getenv("XDG_DATA_DIRS");
+	const char *src = (env && env[0]) ? env : XDG_DATA_DIRS_DEFAULT;
+
+	// Count entries
+	int count = 1;
+	for (const char *p = src; *p; p++)
+		if (*p == ':')
+			count++;
+
+	char **dirs = malloc((count + 1) * sizeof(char *));
+	if (!dirs)
+		return NULL;
+
+	int n = 0;
+	const char *start = src;
+	for (;;) {
+		const char *end = strchr(start, ':');
+		size_t len = end ? (size_t)(end - start) : strlen(start);
+		if (len > 0) {
+			char *dir = malloc(len + 1);
+			if (dir) {
+				memcpy(dir, start, len);
+				dir[len] = '\0';
+				dirs[n++] = dir;
+			}
+		}
+		if (!end)
+			break;
+		start = end + 1;
+	}
+
+	dirs[n] = NULL;
+	return dirs;
+}
+
+void
+free_xdg_data_dirs(char **dirs)
+{
+	if (!dirs)
+		return;
+	for (int i = 0; dirs[i]; i++)
+		free(dirs[i]);
+	free(dirs);
+}
+
+// ---------------------------------------------------------------------------
 // .desktop file parser
 //
 // Parses key-value pairs from a .desktop file section.
@@ -223,113 +278,172 @@ find_best_icon(const char *icon_name)
 	if (!candidates)
 		return NULL;
 
-	const char *icon_base = ICONS_DIR;
-	DIR *base_dir = opendir(icon_base);
-	if (!base_dir) {
+	char **data_dirs = xdg_data_dirs();
+	if (!data_dirs) {
 		free(candidates);
 		return NULL;
 	}
 
-	struct dirent *theme_entry;
-	while ((theme_entry = readdir(base_dir))) {
-		// Skip . and ..
-		if (theme_entry->d_name[0] == '.')
+	for (int d = 0; data_dirs[d]; d++) {
+		char *icon_base = NULL;
+		if (asprintf(&icon_base, "%s/" ICONS_SUBDIR, data_dirs[d]) < 0)
 			continue;
 
-		char *theme_path = NULL;
-		if (asprintf(&theme_path, "%s/%s", icon_base, theme_entry->d_name) < 0)
-			continue;
-
-		// Check if it's a directory
-		DIR *theme_dir = opendir(theme_path);
-		if (!theme_dir) {
-			free(theme_path);
+		DIR *base_dir = opendir(icon_base);
+		if (!base_dir) {
+			free(icon_base);
 			continue;
 		}
 
-		struct dirent *size_entry;
-		while ((size_entry = readdir(theme_dir))) {
-			if (size_entry->d_name[0] == '.')
+		struct dirent *theme_entry;
+		while ((theme_entry = readdir(base_dir))) {
+			// Skip . and ..
+			if (theme_entry->d_name[0] == '.')
 				continue;
 
-			// Try SVG
-			char *svg_path = make_icon_path(theme_path, size_entry->d_name,
-				icon_name, "svg");
-			if (svg_path) {
-				if (access(svg_path, F_OK) == 0) {
-					if (verbose >= 2)
-						printf("[DBG²]   Found SVG: "
-							   "%s\n",
-							svg_path);
-					if (candidate_count >= capacity) {
-						capacity *= 2;
-						IconCandidate *tmp = realloc(candidates,
-							capacity * sizeof(IconCandidate));
-						if (tmp)
-							candidates = tmp;
-						else {
-							free(svg_path);
-							goto cleanup;
-						}
-					}
-					candidates[candidate_count].path = svg_path;
-					candidates[candidate_count].size =
-						999; // SVG is scalable (highest
-							 // priority)
-					candidate_count++;
-				} else {
-					if (verbose >= 4)
-						printf("[I/O] ACCESS CHECK (stat): %s - NOT FOUND\n",
-							svg_path);
-					free(svg_path);
-				}
-			} // Try PNG
-			char *png_path = make_icon_path(theme_path, size_entry->d_name,
-				icon_name, "png");
-			if (png_path) {
-				if (access(png_path, F_OK) == 0) {
-					if (verbose >= 4)
-						printf("[I/O] ACCESS CHECK (stat): %s - EXISTS\n",
-							png_path);
-					// Extract size from directory name
-					// (e.g., "256x256" -> 256)
-					int size = 0;
-					sscanf(size_entry->d_name, "%dx%d", &size, &size);
+			char *theme_path = NULL;
+			if (asprintf(&theme_path, "%s/%s", icon_base, theme_entry->d_name) <
+				0)
+				continue;
 
-					if (verbose >= 2)
-						printf("[DBG²]   Found PNG "
-							   "(%dpx): %s\n",
-							size, png_path);
-					if (candidate_count >= capacity) {
-						capacity *= 2;
-						IconCandidate *tmp = realloc(candidates,
-							capacity * sizeof(IconCandidate));
-						if (tmp)
-							candidates = tmp;
-						else {
-							free(png_path);
-							goto cleanup;
+			// Check if it's a directory
+			DIR *theme_dir = opendir(theme_path);
+			if (!theme_dir) {
+				free(theme_path);
+				continue;
+			}
+
+			struct dirent *size_entry;
+			while ((size_entry = readdir(theme_dir))) {
+				if (size_entry->d_name[0] == '.')
+					continue;
+
+				// Try SVG
+				char *svg_path = make_icon_path(theme_path, size_entry->d_name,
+					icon_name, "svg");
+				if (svg_path) {
+					if (access(svg_path, F_OK) == 0) {
+						if (verbose >= 2)
+							printf("[DBG²]   Found SVG: %s\n", svg_path);
+						if (candidate_count >= capacity) {
+							capacity *= 2;
+							IconCandidate *tmp = realloc(candidates,
+								capacity * sizeof(IconCandidate));
+							if (tmp)
+								candidates = tmp;
+							else {
+								free(svg_path);
+								closedir(theme_dir);
+								free(theme_path);
+								closedir(base_dir);
+								free(icon_base);
+								goto cleanup;
+							}
 						}
+						candidates[candidate_count].path = svg_path;
+						candidates[candidate_count].size =
+							999; // SVG is scalable (highest priority)
+						candidate_count++;
+					} else {
+						if (verbose >= 4)
+							printf("[I/O] ACCESS CHECK (stat):"
+								   " %s - NOT FOUND\n",
+								svg_path);
+						free(svg_path);
 					}
-					candidates[candidate_count].path = png_path;
-					candidates[candidate_count].size = size;
-					candidate_count++;
-				} else {
-					if (verbose >= 4)
-						printf("[I/O] ACCESS CHECK (stat): %s - NOT FOUND\n",
-							png_path);
-					free(png_path);
+				}
+				// Try PNG
+				char *png_path = make_icon_path(theme_path, size_entry->d_name,
+					icon_name, "png");
+				if (png_path) {
+					if (access(png_path, F_OK) == 0) {
+						if (verbose >= 4)
+							printf("[I/O] ACCESS CHECK (stat):"
+								   " %s - EXISTS\n",
+								png_path);
+						// Extract size from directory name
+						// (e.g., "256x256" -> 256)
+						int size = 0;
+						sscanf(size_entry->d_name, "%dx%d", &size, &size);
+
+						if (verbose >= 2)
+							printf("[DBG²]   Found PNG (%dpx): %s\n", size,
+								png_path);
+						if (candidate_count >= capacity) {
+							capacity *= 2;
+							IconCandidate *tmp = realloc(candidates,
+								capacity * sizeof(IconCandidate));
+							if (tmp)
+								candidates = tmp;
+							else {
+								free(png_path);
+								closedir(theme_dir);
+								free(theme_path);
+								closedir(base_dir);
+								free(icon_base);
+								goto cleanup;
+							}
+						}
+						candidates[candidate_count].path = png_path;
+						candidates[candidate_count].size = size;
+						candidate_count++;
+					} else {
+						if (verbose >= 4)
+							printf("[I/O] ACCESS CHECK (stat):"
+								   " %s - NOT FOUND\n",
+								png_path);
+						free(png_path);
+					}
 				}
 			}
+
+			closedir(theme_dir);
+			free(theme_path);
 		}
 
-		closedir(theme_dir);
-		free(theme_path);
+		if (verbose >= 4)
+			printf("[I/O] CLOSEDIR: %s (icons dir)\n", icon_base);
+		closedir(base_dir);
+		free(icon_base);
+
+		// Also check <datadir>/pixmaps as a fallback within this data dir
+		char *pixmaps_base = NULL;
+		if (asprintf(&pixmaps_base, "%s/" PIXMAPS_SUBDIR, data_dirs[d]) >= 0) {
+			const char *exts[] = {"svg", "png", NULL};
+			for (int e = 0; exts[e]; e++) {
+				char *p = NULL;
+				if (asprintf(&p, "%s/%s.%s", pixmaps_base, icon_name, exts[e]) <
+					0)
+					continue;
+				if (access(p, F_OK) == 0) {
+					if (verbose >= 2)
+						printf("[DBG²]   Found pixmap: %s\n", p);
+					if (candidate_count >= capacity) {
+						capacity *= 2;
+						IconCandidate *tmp = realloc(candidates,
+							capacity * sizeof(IconCandidate));
+						if (tmp)
+							candidates = tmp;
+						else {
+							free(p);
+							free(pixmaps_base);
+							goto cleanup;
+						}
+					}
+					// Pixmaps rank below sized PNGs but above 0
+					candidates[candidate_count].path = p;
+					candidates[candidate_count].size =
+						(e == 0) ? 998 : 1; // svg > png
+					candidate_count++;
+				} else {
+					free(p);
+				}
+			}
+			free(pixmaps_base);
+		}
 	}
 
-	if (verbose >= 4)
-		printf("[I/O] CLOSEDIR: %s (base theme dir)\n", ICONS_DIR);
-	closedir(base_dir);
+	free_xdg_data_dirs(data_dirs);
 
 	if (candidate_count == 0) {
 		if (verbose >= 2)
@@ -373,77 +487,107 @@ cleanup:
 // Public API
 // ---------------------------------------------------------------------------
 
-// List all applications from APPS_DIR/*.desktop
-// Allocates an array of DesktopEntry pointers; caller must free all entries
-// and the array itself.
+// List all applications from <datadir>/applications/*.desktop across all
+// XDG data dirs.  Allocates an array of DesktopEntry pointers; caller must
+// free all entries and the array itself using free_applications().
 DesktopEntry **
 list_all_applications(int *count_out)
 {
-	const char *app_dir = APPS_DIR;
-	if (verbose >= 4)
-		printf("[I/O] OPENDIR: %s\n", app_dir);
-	DIR *dir = opendir(app_dir);
-	if (!dir) {
-		if (verbose >= 4)
-			printf("[I/O] OPENDIR FAILED: %s\n", app_dir);
-		perror("opendir");
-		*count_out = 0;
-		return NULL;
-	}
-
-	// First pass: count valid .desktop files
 	int capacity = 16;
 	int count = 0;
 	DesktopEntry **entries = malloc(capacity * sizeof(DesktopEntry *));
 	if (!entries) {
-		closedir(dir);
 		*count_out = 0;
 		return NULL;
 	}
 
-	struct dirent *entry;
-	while ((entry = readdir(dir))) {
-		// Only process .desktop files
-		if (strlen(entry->d_name) < 9)
-			continue;
-		if (strcmp(entry->d_name + strlen(entry->d_name) - 8, ".desktop") != 0)
-			continue;
-
-		// Build full path
-		char filepath[512];
-		snprintf(filepath, sizeof(filepath), "%s/%s", app_dir, entry->d_name);
-
-		// Parse the .desktop file
-		DesktopEntry *parsed = parse_desktop_file(filepath);
-		if (!parsed)
-			continue;
-
-		// Grow array if needed
-		if (count >= capacity) {
-			capacity *= 2;
-			DesktopEntry **tmp =
-				realloc(entries, capacity * sizeof(DesktopEntry *));
-			if (!tmp) {
-				free_desktop_entry(parsed);
-				goto cleanup;
-			}
-			entries = tmp;
-		}
-
-		entries[count++] = parsed;
+	char **data_dirs = xdg_data_dirs();
+	if (!data_dirs) {
+		free(entries);
+		*count_out = 0;
+		return NULL;
 	}
 
-	if (verbose >= 4)
-		printf("[I/O] CLOSEDIR: %s\n", app_dir);
-	closedir(dir);
+	for (int d = 0; data_dirs[d]; d++) {
+		char *app_dir = NULL;
+		if (asprintf(&app_dir, "%s/" APPS_SUBDIR, data_dirs[d]) < 0)
+			continue;
+
+		if (verbose >= 4)
+			printf("[I/O] OPENDIR: %s\n", app_dir);
+		DIR *dir = opendir(app_dir);
+		if (!dir) {
+			if (verbose >= 4)
+				printf("[I/O] OPENDIR FAILED: %s\n", app_dir);
+			free(app_dir);
+			continue;
+		}
+
+		struct dirent *entry;
+		while ((entry = readdir(dir))) {
+			// Only process .desktop files
+			if (strlen(entry->d_name) < 9)
+				continue;
+			if (strcmp(entry->d_name + strlen(entry->d_name) - 8, ".desktop") !=
+				0)
+				continue;
+
+			// Build full path
+			char filepath[512];
+			snprintf(filepath, sizeof(filepath), "%s/%s", app_dir,
+				entry->d_name);
+
+			// Parse the .desktop file
+			DesktopEntry *parsed = parse_desktop_file(filepath);
+			if (!parsed)
+				continue;
+
+			// Skip duplicates: a .desktop file with the same name in an
+			// earlier data dir takes precedence (XDG spec)
+			int dup = 0;
+			for (int i = 0; i < count; i++) {
+				if (strcasecmp(entries[i]->name, parsed->name) == 0) {
+					dup = 1;
+					break;
+				}
+			}
+			if (dup) {
+				free_desktop_entry(parsed);
+				continue;
+			}
+
+			// Grow array if needed
+			if (count >= capacity) {
+				capacity *= 2;
+				DesktopEntry **tmp =
+					realloc(entries, capacity * sizeof(DesktopEntry *));
+				if (!tmp) {
+					free_desktop_entry(parsed);
+					closedir(dir);
+					free(app_dir);
+					goto cleanup;
+				}
+				entries = tmp;
+			}
+
+			entries[count++] = parsed;
+		}
+
+		if (verbose >= 4)
+			printf("[I/O] CLOSEDIR: %s\n", app_dir);
+		closedir(dir);
+		free(app_dir);
+	}
+
+	free_xdg_data_dirs(data_dirs);
 	*count_out = count;
 	return entries;
 
 cleanup:
+	free_xdg_data_dirs(data_dirs);
 	for (int i = 0; i < count; i++)
 		free_desktop_entry(entries[i]);
 	free(entries);
-	closedir(dir);
 	*count_out = 0;
 	return NULL;
 }
@@ -1458,7 +1602,9 @@ init_config(void)
 	DesktopEntry **apps = list_all_applications(&app_count);
 
 	if (app_count == 0) {
-		fprintf(stderr, "No applications found in " APPS_DIR "\n");
+		const char *xdg = getenv("XDG_DATA_DIRS");
+		fprintf(stderr, "No applications found in %s/" APPS_SUBDIR "\n",
+			xdg && xdg[0] ? xdg : XDG_DATA_DIRS_DEFAULT);
 		return 1;
 	}
 

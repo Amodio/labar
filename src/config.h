@@ -4,15 +4,24 @@
 #define CONFIG_DIR ".config"
 #define CONFIG_NAME "labar.cfg"
 
-#ifndef APPS_DIR
-#define APPS_DIR "/usr/share/applications"
+// XDG data directory sub-paths (relative to each XDG data dir)
+#define APPS_SUBDIR "applications"
+#define ICONS_SUBDIR "icons"
+#define PIXMAPS_SUBDIR "pixmaps"
+
+// Compile-time fallback used when XDG_DATA_DIRS is unset (XDG default)
+#ifndef XDG_DATA_DIRS_DEFAULT
+#define XDG_DATA_DIRS_DEFAULT "/usr/share"
 #endif
-#ifndef ICONS_DIR
-#define ICONS_DIR "/usr/share/icons"
-#endif
-#ifndef PIXMAPS_DIR
-#define PIXMAPS_DIR "/usr/share/pixmaps"
-#endif
+
+// Return a NULL-terminated, heap-allocated array of XDG data directory paths.
+// Reads $XDG_DATA_DIRS (colon-separated); falls back to XDG_DATA_DIRS_DEFAULT.
+// Each element and the array itself must be freed by the caller; use
+// free_xdg_data_dirs() for convenience.
+char **xdg_data_dirs(void);
+
+// Free an array returned by xdg_data_dirs()
+void free_xdg_data_dirs(char **dirs);
 
 // Global verbose flag for debug output
 extern int verbose;
