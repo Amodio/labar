@@ -3,6 +3,7 @@
 #include "config.h"
 #include <ctype.h>
 #include <dirent.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -245,16 +246,105 @@ compare_icons(const void *a, const void *b)
 	return ic_b->size - ic_a->size;
 }
 
-// Build a heap-allocated icon path; caller must free.
-// Returns NULL on allocation failure.
-static char *
-make_icon_path(const char *dir, const char *size, const char *name,
-	const char *ext)
+// Try to add a candidate icon at `path` to the candidates array.
+// `size_str` is the directory component that may contain a numeric size
+// (e.g. "48x48", "32", "scalable"); `is_svg` selects the priority value.
+// Returns 0 on success, -1 on realloc failure (caller should goto cleanup).
+static int
+try_add_candidate(IconCandidate **candidates, int *count, int *capacity,
+	const char *path, const char *size_str, int is_svg)
 {
-	char *p = NULL;
-	if (asprintf(&p, "%s/%s/apps/%s.%s", dir, size, name, ext) < 0)
-		return NULL;
-	return p;
+	if (access(path, F_OK) != 0)
+		return 0;
+
+	if (*count >= *capacity) {
+		int newcap = *capacity * 2;
+		IconCandidate *tmp =
+			realloc(*candidates, newcap * sizeof(IconCandidate));
+		if (!tmp)
+			return -1;
+		*candidates = tmp;
+		*capacity = newcap;
+	}
+
+	int size = is_svg ? 999 : 0;
+	if (!is_svg)
+		sscanf(size_str, "%d", &size);
+
+	(*candidates)[*count].path = strdup(path);
+	if (!(*candidates)[*count].path)
+		return -1;
+	(*candidates)[(*count)++].size = size;
+	return 0;
+}
+
+// Probe all known icon layout patterns for `icon_name` under `theme_path`,
+// adding any found paths to `candidates`.
+// Handles two common layouts:
+//   hicolor: <theme>/<size>/apps/<name>.ext  (size dir at first level)
+//   breeze:  <theme>/apps/<size>/<name>.ext  (category dir at first level)
+// Returns -1 on realloc failure, 0 otherwise.
+static int
+probe_theme(const char *theme_path, const char *icon_name,
+	IconCandidate **candidates, int *count, int *capacity)
+{
+	DIR *l1_dir = opendir(theme_path);
+	if (!l1_dir)
+		return 0;
+
+	const char *exts[] = {"svg", "png", NULL};
+
+	struct dirent *l1;
+	while ((l1 = readdir(l1_dir))) {
+		if (l1->d_name[0] == '.')
+			continue;
+
+		char *l1_path = NULL;
+		if (asprintf(&l1_path, "%s/%s", theme_path, l1->d_name) < 0)
+			continue;
+
+		DIR *l2_dir = opendir(l1_path);
+		if (!l2_dir) {
+			free(l1_path);
+			continue;
+		}
+
+		struct dirent *l2;
+		while ((l2 = readdir(l2_dir))) {
+			if (l2->d_name[0] == '.')
+				continue;
+
+			// Pattern A: <theme>/<l1>/<l2>/<name>.ext
+			// Covers hicolor (<l1>=size, <l2>=apps) and
+			//        breeze  (<l1>=apps, <l2>=size).
+			// Extract numeric size from whichever of l1/l2 has one.
+			const char *size_str = l1->d_name;
+			{
+				int n = 0;
+				sscanf(l2->d_name, "%d", &n);
+				if (n > 0)
+					size_str = l2->d_name;
+			}
+
+			for (int e = 0; exts[e]; e++) {
+				char path[PATH_MAX];
+				snprintf(path, sizeof(path), "%s/%s/%s.%s", l1_path, l2->d_name,
+					icon_name, exts[e]);
+				int is_svg = (e == 0);
+				if (try_add_candidate(candidates, count, capacity, path,
+						size_str, is_svg) < 0) {
+					closedir(l2_dir);
+					free(l1_path);
+					closedir(l1_dir);
+					return -1;
+				}
+			}
+		}
+		closedir(l2_dir);
+		free(l1_path);
+	}
+	closedir(l1_dir);
+	return 0;
 }
 
 // Find all icon variants for an application
@@ -297,7 +387,6 @@ find_best_icon(const char *icon_name)
 
 		struct dirent *theme_entry;
 		while ((theme_entry = readdir(base_dir))) {
-			// Skip . and ..
 			if (theme_entry->d_name[0] == '.')
 				continue;
 
@@ -306,98 +395,14 @@ find_best_icon(const char *icon_name)
 				0)
 				continue;
 
-			// Check if it's a directory
-			DIR *theme_dir = opendir(theme_path);
-			if (!theme_dir) {
+			if (probe_theme(theme_path, icon_name, &candidates,
+					&candidate_count, &capacity) < 0) {
 				free(theme_path);
-				continue;
+				closedir(base_dir);
+				free(icon_base);
+				goto cleanup;
 			}
 
-			struct dirent *size_entry;
-			while ((size_entry = readdir(theme_dir))) {
-				if (size_entry->d_name[0] == '.')
-					continue;
-
-				// Try SVG
-				char *svg_path = make_icon_path(theme_path, size_entry->d_name,
-					icon_name, "svg");
-				if (svg_path) {
-					if (access(svg_path, F_OK) == 0) {
-						if (verbose >= 2)
-							printf("[DBG²]   Found SVG: %s\n", svg_path);
-						if (candidate_count >= capacity) {
-							capacity *= 2;
-							IconCandidate *tmp = realloc(candidates,
-								capacity * sizeof(IconCandidate));
-							if (tmp)
-								candidates = tmp;
-							else {
-								free(svg_path);
-								closedir(theme_dir);
-								free(theme_path);
-								closedir(base_dir);
-								free(icon_base);
-								goto cleanup;
-							}
-						}
-						candidates[candidate_count].path = svg_path;
-						candidates[candidate_count].size =
-							999; // SVG is scalable (highest priority)
-						candidate_count++;
-					} else {
-						if (verbose >= 4)
-							printf("[I/O] ACCESS CHECK (stat):"
-								   " %s - NOT FOUND\n",
-								svg_path);
-						free(svg_path);
-					}
-				}
-				// Try PNG
-				char *png_path = make_icon_path(theme_path, size_entry->d_name,
-					icon_name, "png");
-				if (png_path) {
-					if (access(png_path, F_OK) == 0) {
-						if (verbose >= 4)
-							printf("[I/O] ACCESS CHECK (stat):"
-								   " %s - EXISTS\n",
-								png_path);
-						// Extract size from directory name
-						// (e.g., "256x256" -> 256)
-						int size = 0;
-						sscanf(size_entry->d_name, "%dx%d", &size, &size);
-
-						if (verbose >= 2)
-							printf("[DBG²]   Found PNG (%dpx): %s\n", size,
-								png_path);
-						if (candidate_count >= capacity) {
-							capacity *= 2;
-							IconCandidate *tmp = realloc(candidates,
-								capacity * sizeof(IconCandidate));
-							if (tmp)
-								candidates = tmp;
-							else {
-								free(png_path);
-								closedir(theme_dir);
-								free(theme_path);
-								closedir(base_dir);
-								free(icon_base);
-								goto cleanup;
-							}
-						}
-						candidates[candidate_count].path = png_path;
-						candidates[candidate_count].size = size;
-						candidate_count++;
-					} else {
-						if (verbose >= 4)
-							printf("[I/O] ACCESS CHECK (stat):"
-								   " %s - NOT FOUND\n",
-								png_path);
-						free(png_path);
-					}
-				}
-			}
-
-			closedir(theme_dir);
 			free(theme_path);
 		}
 
