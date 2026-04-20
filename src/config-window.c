@@ -131,70 +131,88 @@ local_find_all_icons(const char *icon_name)
 				continue;
 			DIR *bd = opendir(icons_base);
 			if (bd) {
-				struct dirent *l1e;
-				while ((l1e = readdir(bd))) {
-					if (l1e->d_name[0] == '.')
+				/* Iterate themes */
+				struct dirent *te;
+				while ((te = readdir(bd))) {
+					if (te->d_name[0] == '.')
 						continue;
-					char *l1path = NULL;
-					if (asprintf(&l1path, "%s/%s", icons_base, l1e->d_name) < 0)
+					char *tpath = NULL;
+					if (asprintf(&tpath, "%s/%s", icons_base, te->d_name) < 0)
 						continue;
-					DIR *l1d = opendir(l1path);
-					if (!l1d) {
-						free(l1path);
+					DIR *td = opendir(tpath);
+					if (!td) {
+						free(tpath);
 						continue;
 					}
-					struct dirent *l2e;
-					while ((l2e = readdir(l1d))) {
-						if (l2e->d_name[0] == '.')
+					/* l1: first level inside theme (e.g. "apps" or "48x48") */
+					struct dirent *l1e;
+					while ((l1e = readdir(td))) {
+						if (l1e->d_name[0] == '.')
 							continue;
-						char *l2path = NULL;
-						if (asprintf(&l2path, "%s/%s", l1path, l2e->d_name) < 0)
+						char *l1path = NULL;
+						if (asprintf(&l1path, "%s/%s", tpath, l1e->d_name) < 0)
 							continue;
-						DIR *l2d = opendir(l2path);
-						if (!l2d) {
+						DIR *l1d = opendir(l1path);
+						if (!l1d) {
+							free(l1path);
+							continue;
+						}
+						/* l2: second level (e.g. "apps" or "32") */
+						struct dirent *l2e;
+						while ((l2e = readdir(l1d))) {
+							if (l2e->d_name[0] == '.')
+								continue;
+							char *l2path = NULL;
+							if (asprintf(&l2path, "%s/%s", l1path,
+									l2e->d_name) < 0)
+								continue;
+							DIR *l2d = opendir(l2path);
+							if (!l2d) {
+								free(l2path);
+								continue;
+							}
+							/* Size: whichever of l1/l2 is numeric.
+							 * hicolor: l1=48x48 l2=apps  → from l1
+							 * breeze:  l1=apps  l2=32    → from l2 */
+							int sz_val = -1;
+							sscanf(l2e->d_name, "%d", &sz_val);
+							if (sz_val <= 0)
+								sscanf(l1e->d_name, "%d", &sz_val);
+							size_t prefix_len = strlen(icon_name);
+							struct dirent *fe;
+							while ((fe = readdir(l2d))) {
+								if (fe->d_name[0] == '.')
+									continue;
+								if (strncmp(fe->d_name, icon_name,
+										prefix_len) != 0)
+									continue;
+								char next = fe->d_name[prefix_len];
+								if (next != '\0' && next != '-' && next != '.')
+									continue;
+								const char *dot = strrchr(fe->d_name, '.');
+								if (!dot)
+									continue;
+								int is_svg = (strcmp(dot, ".svg") == 0);
+								int is_png = (strcmp(dot, ".png") == 0);
+								if (!is_svg && !is_png)
+									continue;
+								char *spath = NULL;
+								if (asprintf(&spath, "%s/%s", l2path,
+										fe->d_name) < 0)
+									continue;
+								int sv = is_svg ?
+									(sz_val < 0 ? 9999 : sz_val + 5000) :
+									(sz_val < 0 ? 0 : sz_val);
+								APPEND_ICON(spath, sv);
+							}
+							closedir(l2d);
 							free(l2path);
-							continue;
 						}
-						/* Size is whichever of l1/l2 parses as a
-						 * positive integer (handles both hicolor
-						 * <theme>/<size>/apps/ and breeze
-						 * <theme>/apps/<size>/). */
-						int sz_val = -1;
-						sscanf(l2e->d_name, "%d", &sz_val);
-						if (sz_val <= 0)
-							sscanf(l1e->d_name, "%d", &sz_val);
-						size_t prefix_len = strlen(icon_name);
-						struct dirent *fe;
-						while ((fe = readdir(l2d))) {
-							if (fe->d_name[0] == '.')
-								continue;
-							/* Match exact name or "<n>-…" / "<n>.…" */
-							if (strncmp(fe->d_name, icon_name, prefix_len) != 0)
-								continue;
-							char next = fe->d_name[prefix_len];
-							if (next != '\0' && next != '-' && next != '.')
-								continue;
-							const char *dot = strrchr(fe->d_name, '.');
-							if (!dot)
-								continue;
-							int is_svg = (strcmp(dot, ".svg") == 0);
-							int is_png = (strcmp(dot, ".png") == 0);
-							if (!is_svg && !is_png)
-								continue;
-							char *spath = NULL;
-							if (asprintf(&spath, "%s/%s", l2path, fe->d_name) <
-								0)
-								continue;
-							int sv = is_svg ?
-								(sz_val < 0 ? 9999 : sz_val + 5000) :
-								(sz_val < 0 ? 0 : sz_val);
-							APPEND_ICON(spath, sv);
-						}
-						closedir(l2d);
-						free(l2path);
+						closedir(l1d);
+						free(l1path);
 					}
-					closedir(l1d);
-					free(l1path);
+					closedir(td);
+					free(tpath);
 				}
 				closedir(bd);
 			}
