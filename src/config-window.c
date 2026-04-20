@@ -266,8 +266,7 @@ done_scan:;
 		const char *exts2[] = {"png", "svg", NULL};
 		for (int e = 0; exts2[e]; e++) {
 			char *p = NULL;
-			if (asprintf(&p, "%s/%s.%s", PIXMAPS_DIR, icon_name, exts2[e]) <
-				0)
+			if (asprintf(&p, "%s/%s.%s", PIXMAPS_DIR, icon_name, exts2[e]) < 0)
 				continue;
 			if (access(p, F_OK) == 0) {
 				int sv = (e == 1) ? 9999 : 0;
