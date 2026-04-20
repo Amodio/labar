@@ -10,8 +10,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define APPS_DIR "/usr/share/applications"
-
 // ---------------------------------------------------------------------------
 // .desktop file parser
 //
@@ -225,7 +223,7 @@ find_best_icon(const char *icon_name)
 	if (!candidates)
 		return NULL;
 
-	const char *icon_base = "/usr/share/icons";
+	const char *icon_base = ICONS_DIR;
 	DIR *base_dir = opendir(icon_base);
 	if (!base_dir) {
 		free(candidates);
@@ -330,7 +328,7 @@ find_best_icon(const char *icon_name)
 	}
 
 	if (verbose >= 4)
-		printf("[I/O] CLOSEDIR: /usr/share/icons (base theme dir)\n");
+		printf("[I/O] CLOSEDIR: %s (base theme dir)\n", ICONS_DIR);
 	closedir(base_dir);
 
 	if (candidate_count == 0) {

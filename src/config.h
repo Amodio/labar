@@ -4,6 +4,16 @@
 #define CONFIG_DIR ".config"
 #define CONFIG_NAME "labar.cfg"
 
+#ifndef APPS_DIR
+#define APPS_DIR "/usr/share/applications"
+#endif
+#ifndef ICONS_DIR
+#define ICONS_DIR "/usr/share/icons"
+#endif
+#ifndef PIXMAPS_DIR
+#define PIXMAPS_DIR "/usr/share/pixmaps"
+#endif
+
 // Global verbose flag for debug output
 extern int verbose;
 

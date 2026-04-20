@@ -49,7 +49,7 @@ local_find_best_icon(const char *icon_name)
 		return strdup(icon_name);
 
 	/* Search /usr/share/icons (2 levels: theme / size-dir / apps/) */
-	const char *base = "/usr/share/icons";
+	const char *base = ICONS_DIR;
 	DIR *bd = opendir(base);
 	if (!bd)
 		goto pixmaps;
@@ -107,7 +107,7 @@ pixmaps:;
 	const char *exts2[] = {"png", "svg", NULL};
 	for (int e = 0; exts2[e]; e++) {
 		char *p = NULL;
-		if (asprintf(&p, "/usr/share/pixmaps/%s.%s", icon_name, exts2[e]) < 0)
+		if (asprintf(&p, "%s/%s.%s", PIXMAPS_DIR, icon_name, exts2[e]) < 0)
 			continue;
 		if (access(p, F_OK) == 0)
 			return p;
@@ -186,7 +186,7 @@ local_find_all_icons(const char *icon_name)
 		}                                                                      \
 	} while (0)
 
-	const char *base_dir = "/usr/share/icons";
+	const char *base_dir = ICONS_DIR;
 	DIR *bd = opendir(base_dir);
 	if (bd) {
 		struct dirent *theme;
@@ -266,7 +266,7 @@ done_scan:;
 		const char *exts2[] = {"png", "svg", NULL};
 		for (int e = 0; exts2[e]; e++) {
 			char *p = NULL;
-			if (asprintf(&p, "/usr/share/pixmaps/%s.%s", icon_name, exts2[e]) <
+			if (asprintf(&p, "%s/%s.%s", PIXMAPS_DIR, icon_name, exts2[e]) <
 				0)
 				continue;
 			if (access(p, F_OK) == 0) {
@@ -585,7 +585,7 @@ write_config(CfgWin *w)
 		return -1;
 
 	char path[512];
-	snprintf(path, sizeof(path), "%s/.config/labar.cfg", home);
+	snprintf(path, sizeof(path), "%s/" CONFIG_DIR "/" CONFIG_NAME, home);
 
 	FILE *fp = fopen(path, "w");
 	if (!fp) {
