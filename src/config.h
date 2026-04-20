@@ -198,7 +198,13 @@ typedef struct {
 	int widget_order[5]; // bar order of widgets + apps block
 } Config;
 
-// List all valid applications from /usr/share/applications/*.desktop
+// Find the best available icon file for a logical icon name (e.g. "firefox").
+// Searches all XDG data dirs' icons/ and pixmaps/ subdirectories, handling
+// both the hicolor layout (<theme>/<size>/apps/<n>.ext) and the breeze layout
+// (<theme>/apps/<size>/<n>.ext).  Returns a heap-allocated absolute path the
+// caller must free, or NULL if no icon is found.
+char *find_best_icon_for_name(const char *icon_name);
+
 // Returns a dynamically allocated array of DesktopEntry pointers.
 // The caller must free all entries using free_applications().
 //

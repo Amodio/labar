@@ -350,6 +350,14 @@ probe_theme(const char *theme_path, const char *icon_name,
 // Find all icon variants for an application
 // Returns the best quality icon path, listing all candidates if verbose
 // Caller must free the returned string
+static char *find_best_icon(const char *icon_name);
+
+char *
+find_best_icon_for_name(const char *icon_name)
+{
+	return find_best_icon(icon_name);
+}
+
 static char *
 find_best_icon(const char *icon_name)
 {

@@ -37,103 +37,19 @@ static void on_icon_path_btn_clicked(GtkButton *btn, gpointer user_data);
  *   (b) write the resolved absolute path into labar.cfg.
  * ======================================================================= */
 
-/* Walk XDG data dirs' icons subdirs looking for <n>.png or <n>.svg.
- * Returns a heap-allocated absolute path (caller frees), or NULL. */
+/* Find the best icon for icon_name by delegating to the shared
+ * find_best_icon_for_name() in config.c, which handles both the hicolor
+ * (<theme>/<size>/apps/<n>.ext) and breeze (<theme>/apps/<size>/<n>.ext)
+ * layouts across all XDG data dirs.  Returns a heap-allocated path or NULL.
+ * Already-absolute paths are returned as-is via strdup. */
 static char *
 local_find_best_icon(const char *icon_name)
 {
 	if (!icon_name || icon_name[0] == '\0')
 		return NULL;
-	/* Already an absolute path */
 	if (icon_name[0] == '/')
 		return strdup(icon_name);
-
-	char *best = NULL;
-	int best_size = -1;
-
-	char **data_dirs = xdg_data_dirs();
-	if (!data_dirs)
-		return NULL;
-
-	for (int d = 0; data_dirs[d]; d++) {
-		/* Search <datadir>/icons (2 levels: theme / size-dir / apps/) */
-		char *icons_base = NULL;
-		if (asprintf(&icons_base, "%s/" ICONS_SUBDIR, data_dirs[d]) < 0)
-			continue;
-
-		DIR *bd = opendir(icons_base);
-		if (!bd) {
-			/* Fallback: <datadir>/pixmaps/<n>.{png,svg} */
-			const char *exts2[] = {"svg", "png", NULL};
-			for (int e = 0; exts2[e]; e++) {
-				char *p = NULL;
-				if (asprintf(&p, "%s/" PIXMAPS_SUBDIR "/%s.%s", data_dirs[d],
-						icon_name, exts2[e]) < 0)
-					continue;
-				if (access(p, F_OK) == 0) {
-					int sv = (e == 0) ? 9999 : 0;
-					if (sv > best_size) {
-						free(best);
-						best = p;
-						best_size = sv;
-					} else {
-						free(p);
-					}
-				} else {
-					free(p);
-				}
-			}
-			free(icons_base);
-			continue;
-		}
-
-		struct dirent *theme;
-		while ((theme = readdir(bd))) {
-			if (theme->d_name[0] == '.')
-				continue;
-			char *tpath = NULL;
-			if (asprintf(&tpath, "%s/%s", icons_base, theme->d_name) < 0)
-				continue;
-			DIR *td = opendir(tpath);
-			if (!td) {
-				free(tpath);
-				continue;
-			}
-			struct dirent *sz;
-			while ((sz = readdir(td))) {
-				if (sz->d_name[0] == '.')
-					continue;
-				/* Try apps/ subdir with both svg and png */
-				const char *exts[] = {"svg", "png", NULL};
-				for (int e = 0; exts[e]; e++) {
-					char *spath = NULL;
-					if (asprintf(&spath, "%s/%s/apps/%s.%s", tpath, sz->d_name,
-							icon_name, exts[e]) < 0)
-						continue;
-					if (access(spath, F_OK) == 0) {
-						int sz_val = (e == 0) ? 9999 : 0;
-						sscanf(sz->d_name, "%dx%d", &sz_val, &sz_val);
-						if (sz_val > best_size) {
-							free(best);
-							best = spath;
-							best_size = sz_val;
-						} else {
-							free(spath);
-						}
-					} else {
-						free(spath);
-					}
-				}
-			}
-			closedir(td);
-			free(tpath);
-		}
-		closedir(bd);
-		free(icons_base);
-	}
-
-	free_xdg_data_dirs(data_dirs);
-	return best;
+	return find_best_icon_for_name(icon_name);
 }
 
 /* Collect ALL icon paths for <icon_name> across every theme/size directory.
