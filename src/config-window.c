@@ -26,6 +26,7 @@ static void harvest_widget_fields(CfgWin *w);
 static void on_icon_preview_slot_free(gpointer data);
 static void on_icon_entry_changed(GtkEditable *editable, gpointer user_data);
 static void on_icon_path_btn_clicked(GtkButton *btn, gpointer user_data);
+static void on_icon_browse_clicked(GtkButton *btn, gpointer user_data);
 
 /* =========================================================================
  * Local icon resolution
@@ -241,6 +242,7 @@ struct _CfgWin {
 	/* Apps */
 	GtkBox *apps_box;
 	GtkLabel *status_label;
+	int has_unsaved; /* 1 if there are unsaved changes */
 };
 
 /* =========================================================================
@@ -253,7 +255,10 @@ struct _CfgWin {
 static void
 mark_unsaved(CfgWin *w)
 {
-	if (w && w->status_label)
+	if (!w)
+		return;
+	w->has_unsaved = 1;
+	if (w->status_label)
 		gtk_label_set_text(GTK_LABEL(w->status_label), "");
 }
 
@@ -1573,6 +1578,38 @@ refresh_widgets_list(CfgWin *w)
 	}
 }
 
+/* Async callback for the "unsaved changes" alert dialog.
+ * Quits only if the user chose "Discard" (button index 0). */
+static void
+on_discard_response(GObject *source, GAsyncResult *result, gpointer user_data)
+{
+	int btn =
+		gtk_alert_dialog_choose_finish(GTK_ALERT_DIALOG(source), result, NULL);
+	if (btn == 0) /* "Discard" */
+		g_application_quit(G_APPLICATION(((CfgWin *)user_data)->gapp));
+}
+
+/* Show an "unsaved changes" confirmation if needed.
+ * Returns TRUE if the dialog was shown (suppress immediate close),
+ * FALSE if there are no unsaved changes (caller should proceed). */
+static gboolean
+confirm_discard(CfgWin *w)
+{
+	if (!w->has_unsaved)
+		return FALSE;
+
+	GtkAlertDialog *dlg = gtk_alert_dialog_new("You have unsaved changes.");
+	gtk_alert_dialog_set_detail(dlg,
+		"Close anyway and discard changes, or go back and save first?");
+	const char *buttons[] = {"Discard", "Cancel", NULL};
+	gtk_alert_dialog_set_buttons(dlg, buttons);
+	gtk_alert_dialog_set_default_button(dlg, 1); /* Cancel */
+	gtk_alert_dialog_set_cancel_button(dlg, 1);
+	gtk_alert_dialog_choose(dlg, w->window, NULL, on_discard_response, w);
+	g_object_unref(dlg);
+	return TRUE;
+}
+
 /* Both the Close button and the window's own × button route through here,
  * calling g_application_quit instead of gtk_window_destroy to avoid a crash
  * caused by GTK tearing down the widget tree while background threads still
@@ -1581,7 +1618,10 @@ static gboolean
 on_close_request(GtkWindow *win, gpointer data)
 {
 	(void)win;
-	g_application_quit(G_APPLICATION(((CfgWin *)data)->gapp));
+	CfgWin *w = (CfgWin *)data;
+	if (confirm_discard(w))
+		return TRUE; /* dialog shown — wait for user response */
+	g_application_quit(G_APPLICATION(w->gapp));
 	return TRUE;
 }
 
@@ -1686,6 +1726,70 @@ on_icon_path_btn_clicked(GtkButton *btn, gpointer user_data)
 	w = w ? gtk_widget_get_parent(w) : NULL;			   /* popover */
 	if (w && GTK_IS_POPOVER(w))
 		gtk_popover_popdown(GTK_POPOVER(w));
+}
+
+/* Open a file-chooser dialog so the user can browse for an icon file.
+ * user_data is the GtkEntry for the icon path. */
+static void
+on_icon_browse_finish(GObject *source, GAsyncResult *result, gpointer user_data)
+{
+	GtkFileDialog *dlg = GTK_FILE_DIALOG(source);
+	GFile *file = gtk_file_dialog_open_finish(dlg, result, NULL);
+	if (file) {
+		char *path = g_file_get_path(file);
+		if (path) {
+			gtk_editable_set_text(GTK_EDITABLE((GtkWidget *)user_data), path);
+			g_free(path);
+		}
+		g_object_unref(file);
+	}
+}
+
+static void
+on_icon_browse_clicked(GtkButton *btn, gpointer user_data)
+{
+	GtkWidget *ie = (GtkWidget *)user_data;
+	GtkWindow *parent =
+		GTK_WINDOW(gtk_widget_get_ancestor(GTK_WIDGET(btn), GTK_TYPE_WINDOW));
+
+	GtkFileDialog *dlg = gtk_file_dialog_new();
+	gtk_file_dialog_set_title(dlg, "Choose Icon");
+
+	GListStore *filters = g_list_store_new(GTK_TYPE_FILE_FILTER);
+
+	GtkFileFilter *fsvg = gtk_file_filter_new();
+	gtk_file_filter_set_name(fsvg, "SVG images");
+	gtk_file_filter_add_pattern(fsvg, "*.svg");
+	g_list_store_append(filters, fsvg);
+	g_object_unref(fsvg);
+
+	GtkFileFilter *fpng = gtk_file_filter_new();
+	gtk_file_filter_set_name(fpng, "PNG images");
+	gtk_file_filter_add_pattern(fpng, "*.png");
+	g_list_store_append(filters, fpng);
+	g_object_unref(fpng);
+
+	GtkFileFilter *fall = gtk_file_filter_new();
+	gtk_file_filter_set_name(fall, "All files");
+	gtk_file_filter_add_pattern(fall, "*");
+	g_list_store_append(filters, fall);
+	g_object_unref(fall);
+
+	gtk_file_dialog_set_filters(dlg, G_LIST_MODEL(filters));
+	g_object_unref(filters);
+
+	/* Start in the directory of the current icon path if it exists */
+	const char *cur = gtk_editable_get_text(GTK_EDITABLE(ie));
+	if (cur && cur[0] == '/') {
+		char *dir = g_path_get_dirname(cur);
+		GFile *gdir = g_file_new_for_path(dir);
+		gtk_file_dialog_set_initial_folder(dlg, gdir);
+		g_object_unref(gdir);
+		g_free(dir);
+	}
+
+	gtk_file_dialog_open(dlg, parent, NULL, on_icon_browse_finish, ie);
+	g_object_unref(dlg);
 }
 
 static GtkWidget *
@@ -1827,6 +1931,13 @@ make_app_row(CfgWin *w, int idx)
 		}
 		free(icon_paths);
 
+		/* 📂 Browse button — always shown */
+		GtkWidget *browse_btn = gtk_button_new_with_label("\xf0\x9f\x93\x82");
+		gtk_widget_set_tooltip_text(browse_btn, "Browse for icon file");
+		g_signal_connect(browse_btn, "clicked",
+			G_CALLBACK(on_icon_browse_clicked), ie);
+		gtk_box_append(GTK_BOX(icon_hbox), browse_btn);
+
 		grid_row(GTK_GRID(grid), 1, "Icon:", icon_hbox);
 	}
 
@@ -1865,19 +1976,24 @@ on_save_clicked(GtkButton *btn, gpointer data)
 {
 	(void)btn;
 	CfgWin *w = (CfgWin *)data;
-	if (write_config(w) == 0)
+	if (write_config(w) == 0) {
+		w->has_unsaved = 0;
 		gtk_label_set_markup(w->status_label,
 			"<span foreground='green'>\xe2\x9c\x94  Configuration saved.</span>");
-	else
+	} else {
 		gtk_label_set_markup(w->status_label,
 			"<span foreground='red'>\xe2\x9c\x98  Failed to save configuration.</span>");
+	}
 }
 
 static void
 on_close_clicked(GtkButton *btn, gpointer data)
 {
 	(void)btn;
-	g_application_quit(G_APPLICATION(((CfgWin *)data)->gapp));
+	CfgWin *w = (CfgWin *)data;
+	if (confirm_discard(w))
+		return; /* dialog shown — wait for user response */
+	g_application_quit(G_APPLICATION(w->gapp));
 }
 
 /* =========================================================================
