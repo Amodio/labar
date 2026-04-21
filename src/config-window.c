@@ -4,6 +4,7 @@
 #include "config.h"
 
 #include <dirent.h>
+#include <ftw.h>
 #include <gtk/gtk.h>
 #include <math.h>
 #include <stdio.h>
@@ -52,22 +53,68 @@ local_find_best_icon(const char *icon_name)
 	return find_best_icon_for_name(icon_name);
 }
 
-/* Collect ALL icon paths for <icon_name> across every theme/size directory.
- * Returns a NULL-terminated heap-allocated array of heap-allocated strings.
- * Caller must free each string and the array itself.
- * The list is deduplicated and sorted largest→smallest (SVG first). */
+/* Collect ALL icon paths for <icon_name> by walking the XDG icon directory
+ * with nftw(3).  Returns a NULL-terminated heap-allocated array of
+ * heap-allocated path strings.  Caller frees each entry and the array.
+ * If icon_name is an absolute path the logical name (basename minus
+ * extension) is derived first so the full theme tree is still searched; the
+ * original absolute path is appended at the end. */
+
+/* nftw callback state passed via a global (nftw has no user-data arg). */
+static struct {
+	const char *name; /* logical icon name to match, e.g. "firefox" */
+	char **paths;	  /* growing result array */
+	int n;			  /* number of entries stored */
+	int cap;		  /* allocated capacity */
+} g_icon_walk;
+
+static int
+icon_walk_cb(const char *fpath, const struct stat *sb, int typeflag,
+	struct FTW *ftwbuf)
+{
+	(void)sb;
+	(void)ftwbuf;
+	if (typeflag != FTW_F)
+		return 0;
+
+	const char *base = strrchr(fpath, '/');
+	base = base ? base + 1 : fpath;
+
+	size_t nlen = strlen(g_icon_walk.name);
+	if (strncmp(base, g_icon_walk.name, nlen) != 0)
+		return 0;
+	char next = base[nlen];
+	if (next != '.' && next != '-')
+		return 0;
+	const char *dot = strrchr(base, '.');
+	if (!dot || (strcmp(dot, ".svg") != 0 && strcmp(dot, ".png") != 0))
+		return 0;
+
+	if (g_icon_walk.n >= g_icon_walk.cap) {
+		int newcap = g_icon_walk.cap ? g_icon_walk.cap * 2 : 16;
+		char **tmp =
+			realloc(g_icon_walk.paths, (size_t)(newcap + 1) * sizeof(char *));
+		if (!tmp)
+			return -1; /* abort walk */
+		g_icon_walk.paths = tmp;
+		g_icon_walk.cap = newcap;
+	}
+	char *copy = strdup(fpath);
+	if (!copy)
+		return -1;
+	g_icon_walk.paths[g_icon_walk.n++] = copy;
+	return 0;
+}
+
 static char **
 local_find_all_icons(const char *icon_name)
 {
 	if (!icon_name || icon_name[0] == '\0')
 		return NULL;
 
-	/* If given an absolute path, derive the logical name (basename minus
-	 * extension) so we can still do a full theme scan.  We'll also include
-	 * the original absolute path in the results. */
+	/* Derive logical name from an absolute path */
 	char logical[256] = {0};
-	const char *absolute_seed = NULL; /* include verbatim if non-NULL */
-
+	const char *absolute_seed = NULL;
 	if (icon_name[0] == '/') {
 		absolute_seed = icon_name;
 		const char *slash = strrchr(icon_name, '/');
@@ -75,7 +122,6 @@ local_find_all_icons(const char *icon_name)
 		const char *dot = strrchr(base, '.');
 		size_t len = dot ? (size_t)(dot - base) : strlen(base);
 		if (len == 0 || len >= sizeof(logical)) {
-			/* Can't derive a logical name — return just the path */
 			char **r = malloc(2 * sizeof(char *));
 			if (!r)
 				return NULL;
@@ -88,193 +134,55 @@ local_find_all_icons(const char *icon_name)
 		icon_name = logical;
 	}
 
-	/* Dynamic array of (path, size) pairs before deduplication */
-	typedef struct {
-		char *path;
-		int sz;
-	} IconEntry;
-	IconEntry *found = NULL;
-	int nfound = 0, cap = 0;
-
-	/* Helper: append a path+size, deduplicating */
-#define APPEND_ICON(p, s)                                                      \
-	do {                                                                       \
-		int _dup = 0;                                                          \
-		for (int _k = 0; _k < nfound; _k++)                                    \
-			if (strcmp(found[_k].path, (p)) == 0) {                            \
-				_dup = 1;                                                      \
-				break;                                                         \
-			}                                                                  \
-		if (!_dup) {                                                           \
-			if (nfound >= cap) {                                               \
-				cap = cap ? cap * 2 : 8;                                       \
-				found = realloc(found, (size_t)cap * sizeof(IconEntry));       \
-				if (!found) {                                                  \
-					free(p);                                                   \
-					goto done_scan;                                            \
-				}                                                              \
-			}                                                                  \
-			found[nfound].path = (p);                                          \
-			found[nfound].sz = (s);                                            \
-			nfound++;                                                          \
-		} else {                                                               \
-			free(p);                                                           \
-		}                                                                      \
-	} while (0)
+	g_icon_walk.name = icon_name;
+	g_icon_walk.paths = NULL;
+	g_icon_walk.n = 0;
+	g_icon_walk.cap = 0;
 
 	char **data_dirs = xdg_data_dirs();
 	if (data_dirs) {
 		for (int d = 0; data_dirs[d]; d++) {
-			/* Search <datadir>/icons */
 			char *icons_base = NULL;
-			if (asprintf(&icons_base, "%s/" ICONS_SUBDIR, data_dirs[d]) < 0)
-				continue;
-			DIR *bd = opendir(icons_base);
-			if (bd) {
-				/* Iterate themes */
-				struct dirent *te;
-				while ((te = readdir(bd))) {
-					if (te->d_name[0] == '.')
-						continue;
-					char *tpath = NULL;
-					if (asprintf(&tpath, "%s/%s", icons_base, te->d_name) < 0)
-						continue;
-					DIR *td = opendir(tpath);
-					if (!td) {
-						free(tpath);
-						continue;
-					}
-					/* l1: first level inside theme (e.g. "apps" or "48x48") */
-					struct dirent *l1e;
-					while ((l1e = readdir(td))) {
-						if (l1e->d_name[0] == '.')
-							continue;
-						char *l1path = NULL;
-						if (asprintf(&l1path, "%s/%s", tpath, l1e->d_name) < 0)
-							continue;
-						DIR *l1d = opendir(l1path);
-						if (!l1d) {
-							free(l1path);
-							continue;
-						}
-						/* l2: second level (e.g. "apps" or "32") */
-						struct dirent *l2e;
-						while ((l2e = readdir(l1d))) {
-							if (l2e->d_name[0] == '.')
-								continue;
-							char *l2path = NULL;
-							if (asprintf(&l2path, "%s/%s", l1path,
-									l2e->d_name) < 0)
-								continue;
-							DIR *l2d = opendir(l2path);
-							if (!l2d) {
-								free(l2path);
-								continue;
-							}
-							/* Size: whichever of l1/l2 is numeric.
-							 * hicolor: l1=48x48 l2=apps  → from l1
-							 * breeze:  l1=apps  l2=32    → from l2 */
-							int sz_val = -1;
-							sscanf(l2e->d_name, "%d", &sz_val);
-							if (sz_val <= 0)
-								sscanf(l1e->d_name, "%d", &sz_val);
-							size_t prefix_len = strlen(icon_name);
-							struct dirent *fe;
-							while ((fe = readdir(l2d))) {
-								if (fe->d_name[0] == '.')
-									continue;
-								if (strncmp(fe->d_name, icon_name,
-										prefix_len) != 0)
-									continue;
-								char next = fe->d_name[prefix_len];
-								if (next != '\0' && next != '-' && next != '.')
-									continue;
-								const char *dot = strrchr(fe->d_name, '.');
-								if (!dot)
-									continue;
-								int is_svg = (strcmp(dot, ".svg") == 0);
-								int is_png = (strcmp(dot, ".png") == 0);
-								if (!is_svg && !is_png)
-									continue;
-								char *spath = NULL;
-								if (asprintf(&spath, "%s/%s", l2path,
-										fe->d_name) < 0)
-									continue;
-								int sv = is_svg ?
-									(sz_val < 0 ? 9999 : sz_val + 5000) :
-									(sz_val < 0 ? 0 : sz_val);
-								APPEND_ICON(spath, sv);
-							}
-							closedir(l2d);
-							free(l2path);
-						}
-						closedir(l1d);
-						free(l1path);
-					}
-					closedir(td);
-					free(tpath);
-				}
-				closedir(bd);
-			}
-			free(icons_base);
-
-			/* Pixmaps fallback for this data dir */
-			{
-				const char *exts2[] = {"png", "svg", NULL};
-				for (int e = 0; exts2[e]; e++) {
-					char *p = NULL;
-					if (asprintf(&p, "%s/" PIXMAPS_SUBDIR "/%s.%s",
-							data_dirs[d], icon_name, exts2[e]) < 0)
-						continue;
-					if (access(p, F_OK) == 0) {
-						int sv = (e == 1) ? 9999 : 0;
-						APPEND_ICON(p, sv);
-					} else {
-						free(p);
-					}
-				}
+			if (asprintf(&icons_base, "%s/" ICONS_SUBDIR, data_dirs[d]) >= 0) {
+				nftw(icons_base, icon_walk_cb, 16, FTW_PHYS);
+				free(icons_base);
 			}
 		}
 		free_xdg_data_dirs(data_dirs);
 	}
-done_scan:;
 
-	/* Include the original absolute path (if any) — it may not be in the
-	 * theme tree (e.g. a custom path the user typed in) */
+	/* Append original absolute path if it wasn't found in the tree */
 	if (absolute_seed) {
-		char *p = strdup(absolute_seed);
-		if (p)
-			APPEND_ICON(p, -1); /* sort to end */
+		int already = 0;
+		for (int i = 0; i < g_icon_walk.n; i++)
+			if (strcmp(g_icon_walk.paths[i], absolute_seed) == 0) {
+				already = 1;
+				break;
+			}
+		if (!already) {
+			if (g_icon_walk.n >= g_icon_walk.cap) {
+				int newcap = g_icon_walk.cap ? g_icon_walk.cap * 2 : 2;
+				char **tmp = realloc(g_icon_walk.paths,
+					(size_t)(newcap + 1) * sizeof(char *));
+				if (tmp) {
+					g_icon_walk.paths = tmp;
+					g_icon_walk.cap = newcap;
+				}
+			}
+			if (g_icon_walk.n < g_icon_walk.cap) {
+				char *copy = strdup(absolute_seed);
+				if (copy)
+					g_icon_walk.paths[g_icon_walk.n++] = copy;
+			}
+		}
 	}
 
-#undef APPEND_ICON
-
-	if (nfound == 0) {
-		free(found);
+	if (g_icon_walk.n == 0) {
+		free(g_icon_walk.paths);
 		return NULL;
 	}
-
-	/* Sort: largest size first (SVGs in scalable dirs → 9999+, sized PNGs
-	 * below) */
-	for (int i = 0; i < nfound - 1; i++)
-		for (int j = i + 1; j < nfound; j++)
-			if (found[j].sz > found[i].sz) {
-				IconEntry tmp = found[i];
-				found[i] = found[j];
-				found[j] = tmp;
-			}
-
-	char **result = malloc((size_t)(nfound + 1) * sizeof(char *));
-	if (result) {
-		for (int i = 0; i < nfound; i++)
-			result[i] = found[i].path;
-		result[nfound] = NULL;
-	} else {
-		for (int i = 0; i < nfound; i++)
-			free(found[i].path);
-	}
-	free(found);
-	return result;
+	g_icon_walk.paths[g_icon_walk.n] = NULL;
+	return g_icon_walk.paths;
 }
 
 /* =========================================================================
