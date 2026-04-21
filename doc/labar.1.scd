@@ -64,6 +64,17 @@ exist, *labar* generates a default one on first run.
 	back to *~/.config/labar.cfg* without editing the file by hand.
 	Widgets and the app-icon block can be reordered using the
 	*▲ Up* / *▼ Down* buttons.
+
+	Each app entry's icon field includes a *▾* button that lists all
+	matching icon files found across the XDG icon theme directories, and
+	a *📂* button that opens a native file-chooser dialog for manual
+	browsing. Selecting an entry from either updates the icon path and
+	refreshes the preview immediately.
+
+	If you close the window or click *Close* while there are unsaved
+	changes, a confirmation dialog asks whether to discard them or return
+	to the editor.
+
 	Available only when *labar* is built with *-DHAVE_GTK4=1*.
 
 *-V, --version*
@@ -178,6 +189,16 @@ app icons → volume widget → date/time widget.
 	cores (one core at 100% on a 12-core machine shows ~8%).
 	Default: *true*.
 
+*show-temp=*_true_|_false_
+	Show a CPU temperature line below the CPU usage line, read from the
+	first *temp1_input* entry found under */sys/class/hwmon*. Set to
+	*false* to hide it. Default: *true*.
+
+*show-proc=*_true_|_false_
+	Show the name of the most CPU-intensive process as a sub-line under
+	the CPU usage reading, read from */proc*. Set to *false* to hide it.
+	Default: *true*.
+
 ## [widget-net] keys
 
 *iface=*_NAME_
@@ -246,7 +267,9 @@ absent is appended in the default relative order.
 Default order: *[widget-sysinfo]* → *[widget-net]* → *[apps]* →
 *[widget-volume]* → *[widget-date]*.
 
-## Background pill grouping all have a non-transparent *bg-color*,
+## Background pill
+
+When two or more adjacent tiles all have a non-transparent *bg-color*,
 *labar* merges their backgrounds into a single rounded pill: inner shared
 edges are drawn as straight lines and the spacing gap between tiles is filled
 with the same colour. Only the outer edges of the group receive rounded
@@ -334,12 +357,19 @@ bg-color=#00000094
 # ICON DISCOVERY
 
 When generating the default configuration, *labar* searches for icons
-automatically:
+automatically using the XDG base directory specification:
 
-. Searches */usr/share/icons* recursively for each known application.
-. Prioritises SVG icons (resolution-independent).
-. Falls back to PNG icons, selecting the largest available size.
+. Reads *$XDG_DATA_DIRS* (colon-separated list of data directories); falls
+  back to */usr/share* if the variable is unset or empty.
+. Searches the *icons/* subdirectory of each data directory recursively,
+  handling both the hicolor layout (*theme/size/category/name.svg*) and the
+  Breeze layout (*theme/category/size/name.svg*) transparently.
+. Prioritises SVG icons (resolution-independent) over PNG icons.
+. Among PNG icons, selects the largest available size.
 . Writes the absolute path into the generated configuration file.
+
+The graphical configuration editor (*-c*) uses the same search path to
+populate the *▾* detected-icons list for each app entry.
 
 Icons can also be specified manually by providing a full path in *icon=*.
 
@@ -396,6 +426,11 @@ moves to a different monitor via *wl_surface.enter*.
 
 *HOME*
 	Used to locate the configuration file at *$HOME/.config/labar.cfg*.
+
+*XDG_DATA_DIRS*
+	Colon-separated list of data directories searched for icon themes
+	(*icons/* subdirectory of each entry). Falls back to */usr/share*
+	when unset or empty, matching the XDG Base Directory specification.
 
 *LANG*, *LC_TIME*
 	Used by *strftime*(3) to localise day and month names in the date
