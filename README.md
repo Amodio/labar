@@ -73,15 +73,15 @@ https://wayland.app/protocols/wlr-layer-shell-unstable-v1#compositor-support)**.
 
 On Debian:
 ```bash
-sudo apt install meson pkgconf cmake libwayland-dev wayland-protocols \
+sudo apt install meson pkgconf libwayland-dev wayland-protocols \
 libcairo2-dev librsvg2-dev libasound2-dev scdoc clang
 sudo apt install libgtk-4-dev # if you want the --config option
 ```
 
 On Alpine Linux:
 ```bash
-sudo apk add meson pkgconf cmake wayland-dev wayland-protocols cairo-dev \
-librsvg-dev alsa-lib-dev scdoc clang22-dev compiler-rt
+sudo apk add meson pkgconf wayland-dev wayland-protocols cairo-dev \
+librsvg-dev alsa-lib-dev scdoc clang-dev compiler-rt
 sudo apk add gtk4.0-dev # if you want the --config option
 ```
 
