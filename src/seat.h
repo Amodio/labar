@@ -7,6 +7,8 @@
 // Seat and pointer related functions
 void seat_capabilities(void *data, struct wl_seat *seat, uint32_t capabilities);
 void seat_name(void *data, struct wl_seat *seat, const char *name);
+void seat_reset(
+	void); // Reset stale surface/hover state on layer surface teardown
 
 // Pointer listener functions
 void pointer_enter(void *data, struct wl_pointer *wl_pointer, uint32_t serial,

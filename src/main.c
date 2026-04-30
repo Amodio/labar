@@ -1198,6 +1198,11 @@ static int pending_layer_rebuild = 0;
 static void
 teardown_layer_surface(void)
 {
+	/* Clear stale pointer-surface reference and hover state in seat.c
+	 * before we destroy the wl_surface below.  This prevents pointer_leave
+	 * (or any in-flight event) from trying to commit to a dead surface. */
+	seat_reset();
+
 	if (layer_surface) {
 		zwlr_layer_surface_v1_destroy(layer_surface);
 		layer_surface = NULL;
@@ -1700,7 +1705,11 @@ registry_add(void *data, struct wl_registry *reg, uint32_t name,
 	} else if (strcmp(interface, wl_shm_interface.name) == 0) {
 		shm = wl_registry_bind(reg, name, &wl_shm_interface, 1);
 	} else if (strcmp(interface, wl_seat_interface.name) == 0) {
-		seat = wl_registry_bind(reg, name, &wl_seat_interface, 1);
+		/* Bind at v5: ensures wl_pointer is at least v3, which is required
+		 * for wl_pointer_release (used in seat_capabilities when the
+		 * compositor withdraws pointer capability). v5 is supported by all
+		 * compositors that implement wlr-layer-shell. */
+		seat = wl_registry_bind(reg, name, &wl_seat_interface, 5);
 		wl_seat_add_listener(seat, get_seat_listener(), NULL);
 		if (verbose >= 2)
 			printf("[DBG²] Bound to wl_seat\n");

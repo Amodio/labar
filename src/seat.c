@@ -28,6 +28,22 @@ extern int phys_height;	 // Physical buffer height (surf_height * buffer_scale)
 // Track which wl_surface the pointer is currently over
 static struct wl_surface *pointer_surface = NULL;
 
+// ---------------------------------------------------------------------------
+// seat_reset
+//
+// Called from teardown_layer_surface() in main.c before the wl_surface is
+// destroyed.  Clears the stale surface pointer and hover state so that the
+// freshly-rebuilt surface starts with a clean slate.  Without this, the old
+// surface pointer kept in pointer_surface would be dangling and any
+// wl_surface_attach/commit called via pointer_leave would corrupt state.
+// ---------------------------------------------------------------------------
+void
+seat_reset(void)
+{
+	pointer_surface = NULL;
+	last_hovered_icon = -1;
+}
+
 void
 pointer_enter(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 	struct wl_surface *surface, wl_fixed_t surface_x, wl_fixed_t surface_y)
@@ -766,11 +782,24 @@ void
 seat_capabilities(void *data, struct wl_seat *seat, uint32_t capabilities)
 {
 	(void)data;
-	if ((capabilities & WL_SEAT_CAPABILITY_POINTER) && !pointer) {
-		pointer = wl_seat_get_pointer(seat);
-		wl_pointer_add_listener(pointer, &pointer_listener, NULL);
-		if (verbose >= 2)
-			printf("[DBG²] Pointer capability detected and bound\n");
+	if (capabilities & WL_SEAT_CAPABILITY_POINTER) {
+		if (!pointer) {
+			pointer = wl_seat_get_pointer(seat);
+			wl_pointer_add_listener(pointer, &pointer_listener, NULL);
+			if (verbose >= 2)
+				printf("[DBG²] Pointer capability detected and bound\n");
+		}
+	} else {
+		/* Compositor withdrew pointer capability — release the object.
+		 * Clearing `pointer` here lets the branch above re-enter and
+		 * obtain a fresh wl_pointer if the seat re-advertises the
+		 * capability (e.g. after a monitor reconnect). */
+		if (pointer) {
+			if (verbose >= 2)
+				printf("[DBG²] Pointer capability lost — releasing\n");
+			wl_pointer_release(pointer);
+			pointer = NULL;
+		}
 	}
 }
 
